@@ -3,16 +3,5 @@
   "name": "cloud-notepad",
   "main": "src/index.js",
   "compatibility_date": "2026-10-02",
-  "workers_dev": true,
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "cloud-notepad-db"
-    }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "STORAGE"
-    }
-  ]
+  "workers_dev": true
 }

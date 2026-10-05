@@ -12,3 +12,6 @@
 19. PWA，可添加到 Android 主屏幕
 
 V6 的 R2 Multipart Upload、断点续传、自动保存、Windows/Android 响应式界面全部保留。
+
+
+V7.2 使用 Cloudflare Dashboard 的 D1/R2 Bindings，避免 GitHub Builds 中的 inherit binding 问题。详见 DEPLOY.md。
