@@ -23,11 +23,10 @@ jobs:
         run: gradle assembleDebug
       - name: Decode fixed release signing key
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
-        env:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/yi-document-release.jks"
       - name: Build fixed-signed release APK
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/yi-document-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
