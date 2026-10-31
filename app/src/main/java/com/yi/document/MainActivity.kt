@@ -11,6 +11,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceResponse
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.LinearLayout
@@ -21,6 +22,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 import java.security.MessageDigest
 import java.security.SecureRandom
 
@@ -305,11 +309,58 @@ class MainActivity : ComponentActivity() {
         if(question==null) { showFirstSetup(); return }
         val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(22,0,22,0) }
         box.addView(TextView(this).apply { text=question; textSize=16f; setTextColor(Color.rgb(35,61,91)) })
-        val answer=field("请输入密保答案",true)
-        val p1=field("设置新密码（至少6位）",true)
-        val p2=field("再次输入新密码",true)
-        listOf(answer,p1,p2).forEach { box.addView(it,LinearLayout.LayoutParams(-1,52)) }
-        val d=AlertDialog.Builder(this).setTitle("密保验证").setView(box).setNegativeButton("取消",null).setPositiveButton("验证并重设",null).show()
+        box.setPadding(dp(22), dp(10), dp(22), dp(12))
+        box.setBackgroundColor(Color.WHITE)
+        fun recoveryLabel(label: String) {
+            box.addView(TextView(this).apply {
+                text = label
+                textSize = 13f
+                setTextColor(Color.rgb(48, 77, 60))
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                setPadding(dp(2), dp(8), 0, dp(5))
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+        fun recoveryField(hintText: String, secret: Boolean): android.widget.EditText {
+            return field(hintText, secret).apply {
+                textSize = 15f
+                setTextColor(Color.rgb(36, 56, 45))
+                setHintTextColor(Color.rgb(137, 153, 143))
+                isSingleLine = true
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.rgb(246, 250, 247))
+                    cornerRadius = dp(10).toFloat()
+                    setStroke(dp(1), Color.rgb(211, 229, 216))
+                }
+                setPadding(dp(13), 0, dp(13), 0)
+            }
+        }
+        box.addView(TextView(this).apply {
+            text = "密保问题：$question"
+            textSize = 15f
+            setTextColor(Color.rgb(31, 83, 59))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(235, 247, 238))
+                cornerRadius = dp(10).toFloat()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        recoveryLabel("密保答案")
+        val answer=recoveryField("请输入密保答案",true)
+        box.addView(answer,LinearLayout.LayoutParams(-1,dp(50)).apply { bottomMargin = dp(6) })
+        recoveryLabel("新密码")
+        val p1=recoveryField("设置新密码（至少6位）",true)
+        box.addView(p1,LinearLayout.LayoutParams(-1,dp(50)).apply { bottomMargin = dp(6) })
+        recoveryLabel("确认新密码")
+        val p2=recoveryField("再次输入新密码",true)
+        box.addView(p2,LinearLayout.LayoutParams(-1,dp(50)))
+        val recoveryScroll = android.widget.ScrollView(this).apply {
+            isFillViewport = false
+            addView(box, android.widget.FrameLayout.LayoutParams(-1, -2))
+        }
+        val d=AlertDialog.Builder(this).setTitle("找回密码")
+            .setView(recoveryScroll).setNegativeButton("取消",null)
+            .setPositiveButton("验证并重设",null).show()
+        d.window?.setLayout((resources.displayMetrics.widthPixels * 0.90f).toInt(), -2)
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val asalt=account.getString("answer_salt","")!!
             if(hash(answer.text.toString().trim().lowercase(),asalt)!=account.getString("answer_hash","")) { answer.error="密保答案不正确"; return@setOnClickListener }
@@ -320,13 +371,21 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun showAccountMenu() {
-        AlertDialog.Builder(this).setTitle("账户").setItems(arrayOf("修改密码（需验证密保）","退出登录")) { _,which ->
-            if(which==0) showRecoveryDialog()
-            else AlertDialog.Builder(this).setTitle("退出登录").setMessage("确定退出当前账户吗？未保存的修改可能丢失。")
-                .setNegativeButton("取消",null).setPositiveButton("退出") { _,_ ->
-                    loggedIn=false; clearDocument(); showLoginGate()
-                }.show()
-        }.show()
+        AlertDialog.Builder(this).setTitle("账户")
+            .setItems(arrayOf("修改密码（需验证密保）")) { _, _ -> showRecoveryDialog() }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun confirmLogout() {
+        AlertDialog.Builder(this).setTitle("退出登录")
+            .setMessage("确定退出当前账户吗？未保存的修改可能丢失。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("退出") { _, _ ->
+                loggedIn = false
+                clearDocument()
+                showLoginGate()
+            }.show()
     }
 
     private fun buildUi() {
@@ -337,7 +396,8 @@ class MainActivity : ComponentActivity() {
         header.addView(actionButton("打开") { openFile.launch(arrayOf("*/*")) })
         header.addView(actionButton("保存") { askSave() })
         header.addView(actionButton("关闭") { closeDocument() })
-        header.addView(actionButton("账户") { showAccountMenu() })
+        header.addView(actionButton("账户") { showAccountMenu() }, LinearLayout.LayoutParams(dp(64), dp(42)))
+        header.addView(actionButton("退出登录") { confirmLogout() }, LinearLayout.LayoutParams(dp(78), dp(42)))
         root.addView(header)
 
         val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(7,5,7,5); setBackgroundColor(Color.rgb(235,243,252)) }
@@ -353,9 +413,30 @@ class MainActivity : ComponentActivity() {
         })
         root.addView(android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled=false; addView(tools) }, LinearLayout.LayoutParams(-1,56))
         editor = WebView(this).apply {
-            setBackgroundColor(Color.rgb(245,248,252)); settings.javaScriptEnabled=true; settings.domStorageEnabled=true
-            settings.allowFileAccess=false; settings.mediaPlaybackRequiresUserGesture=true
-            webChromeClient=WebChromeClient(); webViewClient=WebViewClient(); addJavascriptInterface(EditorBridge(),"Native")
+            setBackgroundColor(Color.rgb(245,248,252))
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
+            settings.mediaPlaybackRequiresUserGesture = true
+            webChromeClient = WebChromeClient()
+            webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(view: WebView?, request: android.webkit.WebResourceRequest?): WebResourceResponse? {
+                    val path = request?.url?.path ?: return null
+                    if (!path.startsWith("/media/")) return null
+                    val name = path.removePrefix("/media/").substringBefore('/')
+                    if (name.isBlank() || name.contains("..")) return null
+                    return try {
+                        val file = File(File(filesDir, "media"), name)
+                        if (!file.isFile) null else {
+                            val mime = android.webkit.MimeTypeMap.getSingleton()
+                                .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+                            WebResourceResponse(mime, null, file.inputStream())
+                        }
+                    } catch (_: Exception) { null }
+                }
+            }
+            addJavascriptInterface(EditorBridge(), "Native")
         }
         root.addView(editor, LinearLayout.LayoutParams(-1,0,1f))
         status = TextView(this).apply { text="就绪 · 支持文字、网页、代码、图片与视频"; textSize=12f; setTextColor(Color.rgb(100,119,143)); setPadding(16,10,16,10); setBackgroundColor(Color.WHITE) }
@@ -436,17 +517,35 @@ class MainActivity : ComponentActivity() {
             } catch(_:Exception) { Toast.makeText(this,"保存失败",Toast.LENGTH_LONG).show() }
         }
     }
-    private fun insertMedia(uri:Uri,type:String) {
+    private fun insertMedia(uri: Uri, type: String) {
+        var target: File? = null
         try {
-            val bytes=contentResolver.openInputStream(uri)?.use { input ->
-                val out=ByteArrayOutputStream(); val buf=ByteArray(16384); var total=0
-                while(true) { val n=input.read(buf); if(n<0) break; total+=n; if(total>200*1024*1024) throw IllegalArgumentException("媒体文件不能超过200MB"); out.write(buf,0,n) }
-                out.toByteArray()
-            } ?: return
-            val mime=contentResolver.getType(uri) ?: if(type=="image") "image/jpeg" else "video/mp4"
-            val b64=Base64.encodeToString(bytes,Base64.NO_WRAP)
-            editor.evaluateJavascript("Editor.insertMedia('data:$mime;base64,$b64','$type')",null); dirty=true
-        } catch(e:Exception) { Toast.makeText(this,e.message ?: "媒体插入失败",Toast.LENGTH_LONG).show() }
+            val mediaDir = File(filesDir, "media").apply { if (!exists() && !mkdirs()) throw IllegalStateException("无法创建媒体存储目录") }
+            val mime = contentResolver.getType(uri) ?: if (type == "image") "image/jpeg" else "video/mp4"
+            val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
+                ?: if (type == "image") "jpg" else "mp4"
+            target = File(mediaDir, UUID.randomUUID().toString() + "." + ext)
+            var total = 0L
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(target).use { output ->
+                    val buffer = ByteArray(32 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > 200L * 1024 * 1024) throw IllegalArgumentException("媒体文件不能超过200MB")
+                        output.write(buffer, 0, count)
+                    }
+                    output.fd.sync()
+                }
+            } ?: throw IllegalStateException("无法读取所选媒体文件")
+            val mediaUrl = "https://editor.local/media/" + target.name
+            editor.evaluateJavascript("Editor.insertMedia('$mediaUrl','$type')", null)
+            dirty = true
+        } catch (e: Exception) {
+            target?.delete()
+            Toast.makeText(this, e.message ?: "媒体插入失败", Toast.LENGTH_LONG).show()
+        }
     }
     inner class EditorBridge {
         @JavascriptInterface fun changed() { runOnUiThread { dirty=true; status.text="$currentName · 有未保存修改" } }
@@ -463,7 +562,8 @@ class MainActivity : ComponentActivity() {
 *{box-sizing:border-box}body{margin:0;background:#f5f8fc;color:#25364b;font-family:Arial,sans-serif}
 #paper{background:white;max-width:980px;min-height:calc(100vh - 28px);margin:14px auto;padding:28px 24px;box-shadow:0 4px 22px #dce6f2;border-radius:14px;outline:none;line-height:1.7;overflow-wrap:anywhere}
 #paper:empty:before{content:'在这里开始写作……';color:#a9b7c8}
-.media{display:block;position:relative;width:100%;max-width:100%;margin:14px auto;padding:0;border:1px dashed #9bbde5;border-radius:10px;overflow:hidden;touch-action:none;user-select:none;background:#f4f7fb}
+.media{display:block;position:relative;width:100%;max-width:100%;margin:14px auto;padding:0;border:1px dashed #9bbde5;border-radius:10px;overflow:hidden;touch-action:pan-y;user-select:none;background:#f4f7fb}
+.media.dragging{opacity:.78;outline:2px dashed #2878d0;z-index:20;touch-action:none}
 .media img,.media video{display:block;width:100%;height:auto;max-width:100%;object-fit:contain}
 .media video{background:#101820;min-height:90px}
 .media.selected{outline:2px solid #3987d8}
@@ -472,14 +572,51 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:monospace;background
 @media(min-width:700px){#paper{margin:24px auto;padding:44px 56px;min-height:calc(100vh - 48px)}}
 </style></head><body><div id="paper" contenteditable="true" spellcheck="false"></div>
 <script>
-const paper=document.getElementById('paper');let history=[],pos=-1,lock=false,pendingMarker=null,selectedMedia=null,drag=null;
+const paper=document.getElementById('paper');let history=[],pos=-1,lock=false,pendingMarker=null,selectedMedia=null,drag=null,longPressTimer=null,dragStarted=false;
 function snap(){if(lock)return;let v=paper.innerHTML;if(history[pos]===v)return;history=history.slice(0,pos+1);history.push(v);if(history.length>20)history.shift();pos=history.length-1;Native.changed();}
 function restore(i){if(i<0||i>=history.length)return;lock=true;pos=i;paper.innerHTML=history[pos];lock=false;}
 function saveCaret(){const s=getSelection();if(!s||!s.rangeCount)return;const r=s.getRangeAt(0);if(!paper.contains(r.startContainer))return;const m=document.createElement('span');m.id='media-caret-marker';m.textContent='\u200b';r.insertNode(m);pendingMarker=m;}
 paper.addEventListener('input',()=>{clearTimeout(window.st);window.st=setTimeout(snap,180)});
-paper.addEventListener('pointerdown',e=>{const box=e.target.closest('.media');if(!box)return;selectedMedia=box;document.querySelectorAll('.media').forEach(x=>x.classList.toggle('selected',x===box));if(e.target.tagName==='VIDEO')return;e.preventDefault();drag={box,x:e.clientX,y:e.clientY,dx:Number(box.dataset.dx||0),dy:Number(box.dataset.dy||0)};box.setPointerCapture(e.pointerId)});
-paper.addEventListener('pointermove',e=>{if(!drag)return;const d=drag;d.box.style.transform='translate('+(d.dx+e.clientX-d.x)+'px,'+(d.dy+e.clientY-d.y)+'px)';d.box.dataset.dx=d.dx+e.clientX-d.x;d.box.dataset.dy=d.dy+e.clientY-d.y});
-paper.addEventListener('pointerup',()=>{if(drag){drag=null;snap()}});paper.addEventListener('pointercancel',()=>drag=null);
+paper.addEventListener('pointerdown',e=>{
+ const box=e.target.closest('.media');if(!box)return;
+ selectedMedia=box;document.querySelectorAll('.media').forEach(x=>x.classList.toggle('selected',x===box));
+ if(e.button!==undefined&&e.button!==0)return;
+ clearTimeout(longPressTimer);dragStarted=false;
+ drag={box,x:e.clientX,y:e.clientY,pointerId:e.pointerId};
+ longPressTimer=setTimeout(()=>{
+   if(!drag)return;dragStarted=true;box.classList.add('dragging');box.style.touchAction='none';
+   try{box.setPointerCapture(e.pointerId)}catch(_){}
+ },480);
+});
+paper.addEventListener('pointermove',e=>{
+ if(!drag)return;
+ if(!dragStarted){if(Math.abs(e.clientX-drag.x)>9||Math.abs(e.clientY-drag.y)>9)clearTimeout(longPressTimer);return}
+ e.preventDefault();
+ drag.box.style.transform='translate('+(e.clientX-drag.x)+'px,'+(e.clientY-drag.y)+'px)';
+});
+function finishMediaDrag(e){
+ clearTimeout(longPressTimer);
+ if(!drag)return;
+ const d=drag;drag=null;
+ if(!dragStarted)return;
+ dragStarted=false;
+ const box=d.box;box.classList.remove('dragging');box.style.transform='';box.style.touchAction='';
+ let range=null;
+ try{range=document.caretRangeFromPoint(e.clientX,e.clientY)}catch(_){}
+ if(range&&paper.contains(range.startContainer)&&!(range.startContainer.parentElement&&range.startContainer.parentElement.closest('.media'))){
+   range.insertNode(box);
+ }else{
+   const all=[...paper.querySelectorAll('.media')];
+   let nearest=null,best=Infinity;
+   all.forEach(item=>{if(item===box)return;const r=item.getBoundingClientRect();const dist=Math.hypot((r.left+r.width/2)-e.clientX,(r.top+r.height/2)-e.clientY);if(dist<best){best=dist;nearest=item}});
+   if(nearest&&best<180){if(e.clientY<nearest.getBoundingClientRect().top+nearest.offsetHeight/2)nearest.before(box);else nearest.after(box)}
+ }
+ const next=box.nextSibling;
+ if(!next||!(next.nodeType===1&&/^(P|DIV)$/.test(next.tagName))){const p=document.createElement('p');p.innerHTML='<br>';box.after(p)}
+ snap();
+}
+paper.addEventListener('pointerup',finishMediaDrag);
+paper.addEventListener('pointercancel',e=>{clearTimeout(longPressTimer);if(drag&&dragStarted){drag.box.classList.remove('dragging');drag.box.style.transform='';drag.box.style.touchAction=''}drag=null;dragStarted=false});
 paper.addEventListener('click',e=>{const m=e.target.closest('.media');if(m){selectedMedia=m;document.querySelectorAll('.media').forEach(x=>x.classList.toggle('selected',x===m))}});
 paper.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?Editor.redo():Editor.undo()}});
 const Editor={
@@ -487,7 +624,7 @@ undo(){restore(pos-1)},redo(){restore(pos+1)},bold(){document.execCommand('bold'
 setFontSize(n){document.execCommand('fontSize',false,n)},setColor(c){document.execCommand('foreColor',false,c)},
 prepareInsert(type){saveCaret();Native.setStatus(type==='image'?'请选择要插入的图片':'请选择要插入的视频')},cancelPendingInsert(){if(pendingMarker){pendingMarker.remove();pendingMarker=null}},
 image(){this.prepareInsert('image');Native.chooseImage()},video(){this.prepareInsert('video');Native.chooseVideo()},
-insertMedia(data,type){const wrap=document.createElement('div');wrap.className='media';wrap.contentEditable='false';wrap.dataset.dx='0';wrap.dataset.dy='0';const el=document.createElement(type==='image'?'img':'video');el.src=data;if(type==='video'){el.controls=true;el.playsInline=true;el.preload='metadata';el.setAttribute('webkit-playsinline','true')}wrap.appendChild(el);const hint=document.createElement('div');hint.className='media-hint';hint.textContent=type==='image'?'图片 · 按住拖动 · 使用比例菜单调整大小':'视频 · 点击播放 · 按住拖动';wrap.appendChild(hint);if(pendingMarker&&pendingMarker.isConnected){pendingMarker.replaceWith(wrap);pendingMarker=null}else{paper.appendChild(wrap)}const spacer=document.createElement('p');spacer.innerHTML='<br>';wrap.after(spacer);snap()},
+insertMedia(data,type){const wrap=document.createElement('div');wrap.className='media';wrap.contentEditable='false';const el=document.createElement(type==='image'?'img':'video');el.src=data;if(type==='video'){el.controls=true;el.playsInline=true;el.preload='metadata';el.setAttribute('webkit-playsinline','true')}wrap.appendChild(el);const hint=document.createElement('div');hint.className='media-hint';hint.textContent=type==='image'?'图片 · 按住拖动 · 使用比例菜单调整大小':'视频 · 点击播放 · 按住拖动';wrap.appendChild(hint);if(pendingMarker&&pendingMarker.isConnected){pendingMarker.replaceWith(wrap);pendingMarker=null}else{paper.appendChild(wrap)}const spacer=document.createElement('p');spacer.innerHTML='<br>';wrap.after(spacer);snap()},
 setMediaScale(percent){const target=selectedMedia||paper.querySelector('.media:last-of-type');if(!target){Native.setStatus('请先点选图片或视频');return}target.style.width=percent+'%';target.style.maxWidth='100%';const media=target.querySelector('img,video');if(media){media.style.width='100%';media.style.height='auto';media.style.objectFit='contain'}snap()},
 loadText(b64,mode){let t=decodeURIComponent(escape(atob(b64)));paper.innerHTML='';if(mode==='html')paper.innerHTML=t;else{let p=document.createElement('pre');p.contentEditable='true';p.textContent=t;paper.appendChild(p)}history=[];pos=-1;snap()},
 exportHtml(){let d='<!doctype html><meta charset="utf-8"><title>毅的文档</title><style>body{font-family:Arial;line-height:1.7}.media{display:block;max-width:100%;overflow:hidden}.media img,.media video{width:100%;height:auto;object-fit:contain}</style>'+paper.innerHTML;return btoa(unescape(encodeURIComponent(d)))}
