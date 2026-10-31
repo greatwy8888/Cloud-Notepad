@@ -21,6 +21,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import java.io.ByteArrayOutputStream
+import java.security.MessageDigest
+import java.security.SecureRandom
 
 class MainActivity : ComponentActivity() {
     private lateinit var editor: WebView
@@ -29,6 +31,8 @@ class MainActivity : ComponentActivity() {
     private var dirty = false
     private var pendingMedia = "image"
     private var pendingClose = false
+    private val account by lazy { getSharedPreferences("yi_document_account", MODE_PRIVATE) }
+    private var loggedIn = false
 
     private val openFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::loadPickedFile) }
     private val saveFile = registerForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { if (it != null) writeDocument(it) else pendingClose = false }
@@ -38,9 +42,95 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        showLoginGate()
+    }
+
+
+    private fun showLoginGate() {
+        loggedIn = false
+        val root = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER; setPadding(28,32,28,32); setBackgroundColor(Color.rgb(242,247,253)) }
+        root.addView(TextView(this).apply { text="毅的文档"; textSize=30f; gravity=Gravity.CENTER; setTextColor(Color.rgb(35,61,91)); setTypeface(null,android.graphics.Typeface.BOLD) }, LinearLayout.LayoutParams(-1,70))
+        root.addView(TextView(this).apply { text="安全登录，继续编辑你的文档"; textSize=14f; gravity=Gravity.CENTER; setTextColor(Color.rgb(100,119,143)) }, LinearLayout.LayoutParams(-1,42))
+        val pass=field("请输入登录密码",true)
+        root.addView(pass,LinearLayout.LayoutParams(-1,56))
+        root.addView(actionButton("登录") {
+            val salt=account.getString("salt",null)
+            if(salt==null) showFirstSetup()
+            else if(hash(pass.text.toString(),salt)==account.getString("password_hash","")) enterEditor()
+            else Toast.makeText(this,"密码错误，请重试",Toast.LENGTH_SHORT).show()
+        },LinearLayout.LayoutParams(-1,50))
+        root.addView(actionButton("忘记密码") { showRecoveryDialog() },LinearLayout.LayoutParams(-1,48))
+        setContentView(root)
+        if(account.getString("salt",null)==null) root.post { showFirstSetup() }
+    }
+
+    private fun enterEditor() {
+        loggedIn=true
         buildUi()
-        editor.loadDataWithBaseURL("https://editor.local/", EDITOR_HTML, "text/html", "UTF-8", null)
+        editor.loadDataWithBaseURL("https://editor.local/",EDITOR_HTML,"text/html","UTF-8",null)
         intent?.data?.let { loadPickedFile(it) }
+    }
+    private fun hash(value:String,salt:String):String {
+        val bytes=MessageDigest.getInstance("SHA-256").digest((salt+value).toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+    private fun newSalt():String {
+        val bytes=ByteArray(16); SecureRandom().nextBytes(bytes)
+        return android.util.Base64.encodeToString(bytes,android.util.Base64.NO_WRAP)
+    }
+    private fun field(label:String,secret:Boolean=false)=android.widget.EditText(this).apply {
+        hint=label
+        if(secret) inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+    }
+    private fun showFirstSetup() {
+        if(account.getString("salt",null)!=null) return
+        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(22,0,22,0) }
+        val p1=field("设置登录密码（至少6位）",true)
+        val p2=field("再次输入登录密码",true)
+        val q=field("设置密保问题，例如：我的第一所学校？")
+        val a=field("设置密保答案",true)
+        listOf(p1,p2,q,a).forEach { box.addView(it,LinearLayout.LayoutParams(-1,52)) }
+        val d=AlertDialog.Builder(this).setTitle("首次使用 · 创建账户")
+            .setMessage("请设置登录密码和密保问题。忘记或修改密码时，需要验证密保答案。")
+            .setView(box).setCancelable(false).setPositiveButton("保存并登录",null).show()
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if(p1.text.length<6) { p1.error="密码至少6位"; return@setOnClickListener }
+            if(p1.text.toString()!=p2.text.toString()) { p2.error="两次密码不一致"; return@setOnClickListener }
+            if(q.text.isBlank() || a.text.isBlank()) { q.error="请填写密保问题和答案"; return@setOnClickListener }
+            val salt=newSalt(); val asalt=newSalt()
+            account.edit().putString("salt",salt).putString("password_hash",hash(p1.text.toString(),salt))
+                .putString("question",q.text.toString().trim()).putString("answer_salt",asalt)
+                .putString("answer_hash",hash(a.text.toString().trim().lowercase(),asalt)).apply()
+            d.dismiss(); enterEditor()
+        }
+    }
+    private fun showRecoveryDialog() {
+        val question=account.getString("question",null)
+        if(question==null) { showFirstSetup(); return }
+        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(22,0,22,0) }
+        box.addView(TextView(this).apply { text=question; textSize=16f; setTextColor(Color.rgb(35,61,91)) })
+        val answer=field("请输入密保答案",true)
+        val p1=field("设置新密码（至少6位）",true)
+        val p2=field("再次输入新密码",true)
+        listOf(answer,p1,p2).forEach { box.addView(it,LinearLayout.LayoutParams(-1,52)) }
+        val d=AlertDialog.Builder(this).setTitle("密保验证").setView(box).setNegativeButton("取消",null).setPositiveButton("验证并重设",null).show()
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val asalt=account.getString("answer_salt","")!!
+            if(hash(answer.text.toString().trim().lowercase(),asalt)!=account.getString("answer_hash","")) { answer.error="密保答案不正确"; return@setOnClickListener }
+            if(p1.text.length<6 || p1.text.toString()!=p2.text.toString()) { p2.error="新密码须至少6位且两次一致"; return@setOnClickListener }
+            val salt=newSalt()
+            account.edit().putString("salt",salt).putString("password_hash",hash(p1.text.toString(),salt)).apply()
+            d.dismiss(); Toast.makeText(this,"密码已重设，请重新登录",Toast.LENGTH_LONG).show()
+        }
+    }
+    private fun showAccountMenu() {
+        AlertDialog.Builder(this).setTitle("账户").setItems(arrayOf("修改密码（需验证密保）","退出登录")) { _,which ->
+            if(which==0) showRecoveryDialog()
+            else AlertDialog.Builder(this).setTitle("退出登录").setMessage("确定退出当前账户吗？未保存的修改可能丢失。")
+                .setNegativeButton("取消",null).setPositiveButton("退出") { _,_ ->
+                    loggedIn=false; clearDocument(); showLoginGate()
+                }.show()
+        }.show()
     }
 
     private fun buildUi() {
@@ -51,6 +141,7 @@ class MainActivity : ComponentActivity() {
         header.addView(actionButton("打开") { openFile.launch(arrayOf("*/*")) })
         header.addView(actionButton("保存") { askSave() })
         header.addView(actionButton("关闭") { closeDocument() })
+        header.addView(actionButton("账户") { showAccountMenu() })
         root.addView(header)
 
         val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(7,5,7,5); setBackgroundColor(Color.rgb(235,243,252)) }
