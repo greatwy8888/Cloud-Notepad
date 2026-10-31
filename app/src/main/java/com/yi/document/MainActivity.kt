@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
         loggedIn = false
         val root = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER; setPadding(28,32,28,32); setBackgroundColor(Color.rgb(242,247,253)) }
         root.addView(TextView(this).apply { text="毅的文档"; textSize=30f; gravity=Gravity.CENTER; setTextColor(Color.rgb(35,61,91)); setTypeface(null,android.graphics.Typeface.BOLD) }, LinearLayout.LayoutParams(-1,70))
-        root.addView(TextView(this).apply { text="安全登录，继续编辑你的文档"; textSize=14f; gravity=Gravity.CENTER; setTextColor(Color.rgb(100,119,143)) }, LinearLayout.LayoutParams(-1,42))
+        
         val pass=field("请输入登录密码",true)
         root.addView(pass,LinearLayout.LayoutParams(-1,56))
         root.addView(actionButton("登录") {
@@ -162,7 +162,7 @@ class MainActivity : ComponentActivity() {
             webChromeClient=WebChromeClient(); webViewClient=WebViewClient(); addJavascriptInterface(EditorBridge(),"Native")
         }
         root.addView(editor, LinearLayout.LayoutParams(-1,0,1f))
-        status = TextView(this).apply { text="就绪 · 支持文字、网页、代码、图片与视频"; textSize=12f; setTextColor(Color.rgb(100,119,143)); setPadding(16,8,16,8); setBackgroundColor(Color.WHITE) }
+        status = TextView(this).apply { text="就绪 · 支持文字、网页、代码、图片与视频"; textSize=12f; setTextColor(Color.rgb(100,119,143)); setPadding(16,10,16,10); setBackgroundColor(Color.WHITE) }
         root.addView(status); setContentView(root)
     }
 
@@ -182,9 +182,20 @@ class MainActivity : ComponentActivity() {
             if(n!=null && n in 1..100) runJs("setMediaScale($n)") else Toast.makeText(this,"请输入 1–100 的整数",Toast.LENGTH_SHORT).show()
         }.setNegativeButton("取消",null).show()
     }
+    private fun dp(value:Int)= (value*resources.displayMetrics.density).toInt()
     private fun actionButton(label:String,action:()->Unit)=Button(this).apply {
-        text=label; textSize=12f; isAllCaps=false; setTextColor(Color.rgb(48,105,174))
-        setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.WHITE)); setPadding(9,0,9,0); setOnClickListener { action() }
+        text=label; textSize=13f; isAllCaps=false
+        typeface=android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL)
+        setTextColor(Color.rgb(42,103,173))
+        background=android.graphics.drawable.GradientDrawable().apply {
+            setColor(Color.WHITE); cornerRadius=dp(12).toFloat()
+            setStroke(dp(1),Color.rgb(218,229,242))
+        }
+        elevation=dp(2).toFloat()
+        minHeight=dp(42); minimumHeight=dp(42)
+        setPadding(dp(12),0,dp(12),0)
+        stateListAnimator=null
+        setOnClickListener { action() }
     }
     private fun runJs(code:String) { editor.evaluateJavascript("Editor.$code",null) }
 
