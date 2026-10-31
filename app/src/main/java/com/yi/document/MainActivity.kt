@@ -195,25 +195,109 @@ class MainActivity : ComponentActivity() {
         if(secret) inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
     }
     private fun showFirstSetup() {
-        if(account.getString("salt",null)!=null) return
-        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(22,0,22,0) }
-        val p1=field("设置登录密码（至少6位）",true)
-        val p2=field("再次输入登录密码",true)
-        val q=field("设置密保问题，例如：我的第一所学校？")
-        val a=field("设置密保答案",true)
-        listOf(p1,p2,q,a).forEach { box.addView(it,LinearLayout.LayoutParams(-1,52)) }
-        val d=AlertDialog.Builder(this).setTitle("首次使用 · 创建账户")
-            .setMessage("请设置登录密码和密保问题。忘记或修改密码时，需要验证密保答案。")
-            .setView(box).setCancelable(false).setPositiveButton("保存并登录",null).show()
+        if (account.getString("salt", null) != null) return
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(8), dp(22), dp(12))
+            setBackgroundColor(Color.WHITE)
+        }
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = true
+            addView(content, android.widget.ScrollView.LayoutParams(-1, -2))
+        }
+        content.addView(TextView(this).apply {
+            text = "欢迎使用毅的文档"
+            textSize = 19f
+            setTextColor(Color.rgb(31, 83, 59))
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, dp(38)))
+        content.addView(TextView(this).apply {
+            text = "创建本机账户后即可开始使用。请记住密码，并填写密保信息以便日后找回。"
+            textSize = 13f
+            setTextColor(Color.rgb(91, 108, 98))
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+
+        fun addLabel(text: String) {
+            content.addView(TextView(this).apply {
+                this.text = text
+                textSize = 13f
+                setTextColor(Color.rgb(48, 77, 60))
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                setPadding(dp(2), dp(7), 0, dp(5))
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+        fun styledField(hintText: String, secret: Boolean = false): android.widget.EditText {
+            return field(hintText, secret).apply {
+                textSize = 15f
+                setTextColor(Color.rgb(36, 56, 45))
+                setHintTextColor(Color.rgb(137, 153, 143))
+                isSingleLine = true
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.rgb(246, 250, 247))
+                    cornerRadius = dp(10).toFloat()
+                    setStroke(dp(1), Color.rgb(211, 229, 216))
+                }
+                setPadding(dp(13), 0, dp(13), 0)
+            }
+        }
+
+        addLabel("登录密码")
+        val p1 = styledField("设置登录密码（至少6位）", true)
+        content.addView(p1, LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(5) })
+        addLabel("确认密码")
+        val p2 = styledField("再次输入登录密码", true)
+        content.addView(p2, LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(5) })
+        addLabel("密保问题")
+        val q = styledField("例如：我的第一所学校？")
+        content.addView(q, LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(5) })
+        addLabel("密保答案")
+        val a = styledField("设置密保答案", true)
+        content.addView(a, LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(12) })
+
+        content.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(235, 247, 238))
+                cornerRadius = dp(10).toFloat()
+            }
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            addView(TextView(this@MainActivity).apply {
+                text = "✓"
+                textSize = 20f
+                setTextColor(Color.rgb(27, 132, 88))
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+            }, LinearLayout.LayoutParams(dp(30), -2))
+            addView(TextView(this@MainActivity).apply {
+                text = "账户仅保存在本机。忘记密码或修改密码时，需要回答此处设置的密保问题。"
+                textSize = 12f
+                setTextColor(Color.rgb(63, 98, 75))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+
+        val d = AlertDialog.Builder(this)
+            .setTitle("首次使用 · 创建账户")
+            .setView(scroll)
+            .setCancelable(false)
+            .setPositiveButton("创建账户并登录", null)
+            .show()
+        d.window?.setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), -2)
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            if(p1.text.length<6) { p1.error="密码至少6位"; return@setOnClickListener }
-            if(p1.text.toString()!=p2.text.toString()) { p2.error="两次密码不一致"; return@setOnClickListener }
-            if(q.text.isBlank() || a.text.isBlank()) { q.error="请填写密保问题和答案"; return@setOnClickListener }
-            val salt=newSalt(); val asalt=newSalt()
-            account.edit().putString("salt",salt).putString("password_hash",hash(p1.text.toString(),salt))
-                .putString("question",q.text.toString().trim()).putString("answer_salt",asalt)
-                .putString("answer_hash",hash(a.text.toString().trim().lowercase(),asalt)).apply()
-            d.dismiss(); enterEditor()
+            if (p1.text.length < 6) { p1.error = "密码至少6位"; return@setOnClickListener }
+            if (p1.text.toString() != p2.text.toString()) { p2.error = "两次密码不一致"; return@setOnClickListener }
+            if (q.text.isBlank()) { q.error = "请填写密保问题"; return@setOnClickListener }
+            if (a.text.isBlank()) { a.error = "请填写密保答案"; return@setOnClickListener }
+            val salt = newSalt()
+            val asalt = newSalt()
+            account.edit().putString("salt", salt).putString("password_hash", hash(p1.text.toString(), salt))
+                .putString("question", q.text.toString().trim()).putString("answer_salt", asalt)
+                .putString("answer_hash", hash(a.text.toString().trim().lowercase(), asalt)).apply()
+            d.dismiss()
+            enterEditor()
         }
     }
     private fun showRecoveryDialog() {
