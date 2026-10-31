@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
             textSize = 15f
             setTextColor(Color.rgb(41, 62, 51))
             setHintTextColor(Color.rgb(151, 169, 158))
-            singleLine = true
+            isSingleLine = true
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(Color.rgb(246, 250, 247))
                 cornerRadius = dp(12).toFloat()
@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(222, 244, 229))
         }, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
-        scroll.addView(column, android.widget.ScrollView.LayoutParams(-1, -1))
+        scroll.addView(column, android.widget.LinearLayout.LayoutParams(-1, -1))
         root.addView(scroll, android.widget.FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
 
