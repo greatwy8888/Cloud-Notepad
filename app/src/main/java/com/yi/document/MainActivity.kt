@@ -524,10 +524,11 @@ class MainActivity : ComponentActivity() {
             val mime = contentResolver.getType(uri) ?: if (type == "image") "image/jpeg" else "video/mp4"
             val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime)
                 ?: if (type == "image") "jpg" else "mp4"
-            target = File(mediaDir, UUID.randomUUID().toString() + "." + ext)
+            val mediaFile = File(mediaDir, UUID.randomUUID().toString() + "." + ext)
+            target = mediaFile
             var total = 0L
             contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(target).use { output ->
+                FileOutputStream(mediaFile).use { output ->
                     val buffer = ByteArray(32 * 1024)
                     while (true) {
                         val count = input.read(buffer)
@@ -539,7 +540,7 @@ class MainActivity : ComponentActivity() {
                     output.fd.sync()
                 }
             } ?: throw IllegalStateException("无法读取所选媒体文件")
-            val mediaUrl = "https://editor.local/media/" + target.name
+            val mediaUrl = "https://editor.local/media/" + mediaFile.name
             editor.evaluateJavascript("Editor.insertMedia('$mediaUrl','$type')", null)
             dirty = true
         } catch (e: Exception) {
