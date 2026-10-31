@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
         try {
             val bytes=contentResolver.openInputStream(uri)?.use { input ->
                 val out=ByteArrayOutputStream(); val buf=ByteArray(16384); var total=0
-                while(true) { val n=input.read(buf); if(n<0) break; total+=n; if(total>80*1024*1024) throw IllegalArgumentException("媒体文件不能超过80MB"); out.write(buf,0,n) }
+                while(true) { val n=input.read(buf); if(n<0) break; total+=n; if(total>200*1024*1024) throw IllegalArgumentException("媒体文件不能超过200MB"); out.write(buf,0,n) }
                 out.toByteArray()
             } ?: return
             val mime=contentResolver.getType(uri) ?: if(type=="image") "image/jpeg" else "video/mp4"
