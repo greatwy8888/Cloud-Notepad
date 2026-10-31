@@ -48,20 +48,132 @@ class MainActivity : ComponentActivity() {
 
     private fun showLoginGate() {
         loggedIn = false
-        val root = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; gravity=Gravity.CENTER; setPadding(28,32,28,32); setBackgroundColor(Color.rgb(242,247,253)) }
-        root.addView(TextView(this).apply { text="毅的文档"; textSize=30f; gravity=Gravity.CENTER; setTextColor(Color.rgb(35,61,91)); setTypeface(null,android.graphics.Typeface.BOLD) }, LinearLayout.LayoutParams(-1,70))
-        
-        val pass=field("请输入登录密码",true)
-        root.addView(pass,LinearLayout.LayoutParams(-1,56))
-        root.addView(actionButton("登录") {
-            val salt=account.getString("salt",null)
-            if(salt==null) showFirstSetup()
-            else if(hash(pass.text.toString(),salt)==account.getString("password_hash","")) enterEditor()
-            else Toast.makeText(this,"密码错误，请重试",Toast.LENGTH_SHORT).show()
-        },LinearLayout.LayoutParams(-1,50))
-        root.addView(actionButton("忘记密码") { showRecoveryDialog() },LinearLayout.LayoutParams(-1,48))
+        val greenDark = Color.rgb(13, 91, 61)
+        val green = Color.rgb(27, 132, 88)
+        val greenLight = Color.rgb(224, 245, 233)
+
+        val root = android.widget.FrameLayout(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(10, 83, 59), Color.rgb(24, 139, 91), Color.rgb(91, 178, 119))
+            )
+        }
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setPadding(dp(24), dp(28), dp(24), dp(28))
+        }
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+        val brand = TextView(this).apply {
+            text = "毅"
+            textSize = 30f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(Color.argb(45, 255, 255, 255))
+                setStroke(dp(1), Color.argb(110, 255, 255, 255))
+            }
+        }
+        column.addView(brand, LinearLayout.LayoutParams(dp(72), dp(72)).apply { bottomMargin = dp(16) })
+        column.addView(TextView(this).apply {
+            text = "毅的文档"
+            textSize = 28f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+        }, LinearLayout.LayoutParams(-1, dp(42)))
+        column.addView(TextView(this).apply {
+            text = "让灵感与资料井然有序"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(225, 246, 233))
+        }, LinearLayout.LayoutParams(-1, dp(34)).apply { bottomMargin = dp(24) })
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(26), dp(24), dp(24))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(22).toFloat()
+            }
+            elevation = dp(12).toFloat()
+        }
+        card.addView(TextView(this).apply {
+            text = "欢迎回来"
+            textSize = 22f
+            setTextColor(Color.rgb(35, 57, 47))
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+        }, LinearLayout.LayoutParams(-1, dp(36)))
+        card.addView(TextView(this).apply {
+            text = "请输入密码，继续使用文档"
+            textSize = 13f
+            setTextColor(Color.rgb(126, 145, 134))
+        }, LinearLayout.LayoutParams(-1, dp(28)).apply { bottomMargin = dp(14) })
+
+        val pass = field("请输入登录密码", true).apply {
+            textSize = 15f
+            setTextColor(Color.rgb(41, 62, 51))
+            setHintTextColor(Color.rgb(151, 169, 158))
+            singleLine = true
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.rgb(246, 250, 247))
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), Color.rgb(220, 233, 224))
+            }
+            setPadding(dp(15), 0, dp(15), 0)
+        }
+        card.addView(pass, LinearLayout.LayoutParams(-1, dp(54)).apply { bottomMargin = dp(14) })
+
+        val login = Button(this).apply {
+            text = "登 录"
+            textSize = 16f
+            isAllCaps = false
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(green)
+                cornerRadius = dp(12).toFloat()
+            }
+            elevation = dp(3).toFloat()
+            setOnClickListener {
+                val salt = account.getString("salt", null)
+                if (salt == null) showFirstSetup()
+                else if (hash(pass.text.toString(), salt) == account.getString("password_hash", "")) enterEditor()
+                else {
+                    pass.error = "密码错误，请重试"
+                    pass.text?.clear()
+                }
+            }
+        }
+        card.addView(login, LinearLayout.LayoutParams(-1, dp(52)).apply { bottomMargin = dp(8) })
+        val forgot = TextView(this).apply {
+            text = "忘记密码？通过密保问题找回"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(green)
+            setPadding(0, dp(12), 0, dp(8))
+            setOnClickListener { showRecoveryDialog() }
+        }
+        card.addView(forgot, LinearLayout.LayoutParams(-1, dp(42)))
+        column.addView(card, LinearLayout.LayoutParams(-1, -2))
+        column.addView(TextView(this).apply {
+            text = "本地账户 · 文档数据保存在本机"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(222, 244, 229))
+        }, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
+        scroll.addView(column, android.widget.ScrollView.LayoutParams(-1, -1))
+        root.addView(scroll, android.widget.FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
-        if(account.getString("salt",null)==null) root.post { showFirstSetup() }
+
+        if (account.getString("salt", null) == null) {
+            root.postDelayed({ if (!isFinishing && !loggedIn) showFirstSetup() }, 250)
+        }
     }
 
     private fun enterEditor() {
