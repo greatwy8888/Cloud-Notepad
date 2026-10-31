@@ -164,7 +164,7 @@ class MainActivity : ComponentActivity() {
     private fun writeDocument(uri: Uri) {
         editor.evaluateJavascript("Editor.exportHtml()") { encoded ->
             try {
-                val clean = encoded?.trim('"')?.replace("\\n", "\n")?.replace("\\"", "\"") ?: ""
+                val clean = encoded?.trim('"') ?: ""
                 val html = String(Base64.decode(clean, Base64.DEFAULT), Charsets.UTF_8)
                 contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(html) }
                 dirty = false
