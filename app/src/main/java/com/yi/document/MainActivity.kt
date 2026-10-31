@@ -28,12 +28,13 @@ class MainActivity : ComponentActivity() {
     private var dirty = false
     private var pendingMedia = "image"
     private var pendingSave = false
+    private var pendingClose = false
 
     private val openFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) loadPickedFile(uri)
     }
     private val saveFile = registerForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
-        if (uri != null) writeDocument(uri)
+        if (uri != null) writeDocument(uri) else pendingClose = false
     }
     private val pickMedia = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) insertMedia(uri, pendingMedia)
@@ -66,6 +67,7 @@ class MainActivity : ComponentActivity() {
         header.addView(title, LinearLayout.LayoutParams(0, 48, 1f))
         header.addView(actionButton("打开") { openFile.launch(arrayOf("*/*")) })
         header.addView(actionButton("保存") { askSave() })
+        header.addView(actionButton("关闭") { closeDocument() })
         root.addView(header)
 
         val tools = LinearLayout(this).apply {
@@ -80,7 +82,8 @@ class MainActivity : ComponentActivity() {
             "字号" to "fontSize()", "颜色" to "color()",
             "图片" to "image()", "视频" to "video()"
         ).forEach { (label, js) -> tools.addView(actionButton(label) { runJs(js) }) }
-        root.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 52))
+        val toolScroller = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(tools) }
+        root.addView(toolScroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 52))
 
         editor = WebView(this).apply {
             setBackgroundColor(Color.rgb(245, 248, 252))
@@ -161,6 +164,25 @@ class MainActivity : ComponentActivity() {
             .setNeutralButton("取消", null).show()
     }
 
+    private fun closeDocument() {
+        if (!dirty) { clearDocument(); return }
+        AlertDialog.Builder(this).setTitle("关闭文档")
+            .setMessage("当前文档有未保存的修改，是否保存后关闭？")
+            .setPositiveButton("保存并关闭") { _, _ ->
+                pendingClose = true
+                saveFile.launch(currentName.substringAfterLast('/').ifBlank { "文档.html" })
+            }
+            .setNegativeButton("不保存") { _, _ -> dirty = false; clearDocument() }
+            .setNeutralButton("取消", null).show()
+    }
+
+    private fun clearDocument() {
+        editor.evaluateJavascript("Editor.loadText('','html')", null)
+        currentName = "未命名文档.html"
+        dirty = false
+        status.text = "文档已关闭 · 可以打开新文件"
+    }
+
     private fun writeDocument(uri: Uri) {
         editor.evaluateJavascript("Editor.exportHtml()") { encoded ->
             try {
@@ -171,6 +193,7 @@ class MainActivity : ComponentActivity() {
                 currentName = queryName(uri)
                 status.text = "$currentName · 已保存"
                 Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show()
+                if (pendingClose) { pendingClose = false; clearDocument() }
             } catch (_: Exception) { Toast.makeText(this, "保存失败", Toast.LENGTH_LONG).show() }
         }
     }
