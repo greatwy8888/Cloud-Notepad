@@ -2,6 +2,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+
 android {
     namespace = "com.yi.document"
     compileSdk = 35
@@ -12,7 +14,22 @@ android {
         versionCode = 8
         versionName = "1.0.7"
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (releaseKeystorePath != null) signingConfig = signingConfigs.getByName("release")
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
