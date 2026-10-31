@@ -205,7 +205,7 @@ class MainActivity : ComponentActivity() {
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = false
             isVerticalScrollBarEnabled = true
-            addView(content, android.widget.ScrollView.LayoutParams(-1, -2))
+            addView(content, android.widget.FrameLayout.LayoutParams(-1, -2))
         }
         content.addView(TextView(this).apply {
             text = "欢迎使用毅的文档"
