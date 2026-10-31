@@ -227,7 +227,16 @@ let history=[],pos=-1,lock=false;
 function snap(){if(lock)return;let v=paper.innerHTML;if(history[pos]===v)return;history=history.slice(0,pos+1);history.push(v);if(history.length>20)history.shift();pos=history.length-1;Native.changed();}
 function restore(i){if(i<0||i>=history.length)return;lock=true;pos=i;paper.innerHTML=history[pos];lock=false;}
 paper.addEventListener('input',()=>{clearTimeout(window.st);window.st=setTimeout(snap,180)});
-paper.addEventListener('pointerup',()=>{});
+paper.addEventListener('pointerdown',e=>{
+ const box=e.target.closest('.media'); if(!box)return;
+ const r=box.getBoundingClientRect();
+ if(e.clientX>r.right-22&&e.clientY>r.bottom-22)return;
+ const sx=e.clientX,sy=e.clientY,sl=parseFloat(box.style.left)||0,st=parseFloat(box.style.top)||0;
+ box.setPointerCapture(e.pointerId);
+ const move=ev=>{box.style.left=(sl+ev.clientX-sx)+'px';box.style.top=(st+ev.clientY-sy)+'px'};
+ const end=()=>{box.removeEventListener('pointermove',move);box.removeEventListener('pointerup',end);snap()};
+ box.addEventListener('pointermove',move);box.addEventListener('pointerup',end,{once:true});
+});
 paper.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?Editor.redo():Editor.undo()}});
 const Editor={
 undo(){restore(pos-1)},redo(){restore(pos+1)},
