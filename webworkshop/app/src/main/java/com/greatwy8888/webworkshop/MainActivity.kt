@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.content.Context
 import android.net.Uri
 import java.io.File
+import androidx.documentfile.provider.DocumentFile
 import android.graphics.Color
 import android.view.View
 import android.webkit.WebChromeClient
@@ -41,6 +42,28 @@ class MainActivity : androidx.activity.ComponentActivity() {
             }
         }
     }
+    private val siteFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let {
+            try {
+                contentResolver.takePersistableUriPermission(it, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val source = DocumentFile.fromTreeUri(this, it) ?: throw IllegalStateException("无法打开文件夹")
+                val target = File(filesDir, "site_project")
+                target.deleteRecursively()
+                target.mkdirs()
+                copySiteTree(source, target)
+                val entry = listOf("index.html", "index.htm", "main.html").map { name -> File(target, name) }.firstOrNull { file -> file.exists() }
+                    ?: throw IllegalStateException("文件夹中没有 index.html、index.htm 或 main.html")
+                localHtml = entry.readText()
+                localHtmlBaseUrl = "file://${target.absolutePath}/"
+                prefs.edit().putString("local_html_path", entry.absolutePath).putString("local_html_base", localHtmlBaseUrl).apply()
+                mode = "html"
+                status.text = "网页文件夹已导入，资源文件一并复制"
+            } catch (e: Exception) {
+                status.text = "导入失败：${e.localizedMessage ?: "请检查文件夹内容"}"
+            }
+        }
+    }
+
     private val imagePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             try {
@@ -67,7 +90,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             val file = File(path)
             if (file.exists()) {
                 localHtml = file.readText()
-                localHtmlBaseUrl = "file://${filesDir.absolutePath}/"
+                localHtmlBaseUrl = prefs.getString("local_html_base", "file://${filesDir.absolutePath}/")
                 mode = "html"
             }
         }
@@ -120,6 +143,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
         form.addView(button("选择本地 HTML 文件") {
             htmlPicker.launch(arrayOf("text/html", "application/xhtml+xml"))
         })
+        form.addView(button("导入完整网页文件夹（含 CSS、JS、图片）") {
+            siteFolderPicker.launch(null)
+        })
 
         form.addView(label("应用名称"))
         appName = EditText(this).apply {
@@ -159,6 +185,21 @@ class MainActivity : androidx.activity.ComponentActivity() {
         scroll.addView(form)
         root.addView(scroll)
         setContentView(root)
+    }
+
+    private fun copySiteTree(source: DocumentFile, destination: File) {
+        if (source.isDirectory) {
+            destination.mkdirs()
+            source.listFiles().forEach { child ->
+                val name = child.name ?: return@forEach
+                copySiteTree(child, File(destination, name))
+            }
+        } else {
+            destination.parentFile?.mkdirs()
+            contentResolver.openInputStream(source.uri)?.use { input ->
+                destination.outputStream().use { output -> input.copyTo(output) }
+            } ?: throw IllegalStateException("无法读取：${source.name}")
+        }
     }
 
     private fun preview() {
