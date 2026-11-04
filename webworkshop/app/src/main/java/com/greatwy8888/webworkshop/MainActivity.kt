@@ -94,7 +94,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
         form.addView(label("网址"))
         address = EditText(this).apply {
-            hint = "https://www.example.com"; singleLine = true; textSize = 15f
+            hint = "https://www.example.com"; isSingleLine = true; textSize = 15f
             setText(prefs.getString("last_url", ""))
             setPadding(dp(12), dp(10), dp(12), dp(10))
             setBackgroundColor(Color.WHITE)
@@ -106,7 +106,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
         form.addView(label("应用名称"))
         appName = EditText(this).apply {
-            hint = "例如：我的网站"; singleLine = true; textSize = 15f
+            hint = "例如：我的网站"; isSingleLine = true; textSize = 15f
             setText(prefs.getString("app_name", ""))
             setPadding(dp(12), dp(10), dp(12), dp(10))
             setBackgroundColor(Color.WHITE)
