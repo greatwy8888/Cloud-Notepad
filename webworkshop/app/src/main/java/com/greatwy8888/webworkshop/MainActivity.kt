@@ -3,6 +3,7 @@ package com.greatwy8888.webworkshop
 import android.os.Bundle
 import android.content.Context
 import android.net.Uri
+import java.io.File
 import android.graphics.Color
 import android.view.View
 import android.webkit.WebChromeClient
@@ -19,6 +20,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private lateinit var status: TextView
     private var mode = "url"
     private var localHtml: String? = null
+    private var localHtmlBaseUrl: String? = null
     private var iconUri: Uri? = null
     private var splashUri: Uri? = null
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
@@ -27,7 +29,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
         uri?.let {
             try {
                 contentResolver.takePersistableUriPermission(it, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                localHtml = contentResolver.openInputStream(it)?.bufferedReader()?.use { reader -> reader.readText() }
+                val htmlFile = File(filesDir, "imported_page.html")
+                contentResolver.openInputStream(it)?.use { input -> htmlFile.outputStream().use { output -> input.copyTo(output) } }
+                localHtml = htmlFile.readText()
+                localHtmlBaseUrl = "file://${filesDir.absolutePath}/"
+                prefs.edit().putString("local_html_path", htmlFile.absolutePath).apply()
                 mode = "html"
                 status.text = "已选择本地 HTML：${it.lastPathSegment ?: "页面"}"
             } catch (e: Exception) {
@@ -35,8 +41,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
             }
         }
     }
-    private val imagePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    private val imagePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
+            try {
+                contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Exception) { }
             if (pendingImage == "icon") {
                 iconUri = uri
                 prefs.edit().putString("icon_uri", uri.toString()).apply()
@@ -54,6 +63,14 @@ class MainActivity : androidx.activity.ComponentActivity() {
         super.onCreate(savedInstanceState)
         iconUri = prefs.getString("icon_uri", null)?.let(Uri::parse)
         splashUri = prefs.getString("splash_uri", null)?.let(Uri::parse)
+        prefs.getString("local_html_path", null)?.let { path ->
+            val file = File(path)
+            if (file.exists()) {
+                localHtml = file.readText()
+                localHtmlBaseUrl = "file://${filesDir.absolutePath}/"
+                mode = "html"
+            }
+        }
         showHome()
     }
 
@@ -114,8 +131,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         form.addView(appName, LinearLayout.LayoutParams(-1, dp(52)))
 
         form.addView(label("应用图标与启动画面"))
-        form.addView(button("自定义应用图标") { pendingImage = "icon"; imagePicker.launch("image/*") })
-        form.addView(button("自定义启动画面") { pendingImage = "splash"; imagePicker.launch("image/*") })
+        form.addView(button("自定义应用图标") { pendingImage = "icon"; imagePicker.launch(arrayOf("image/*")) })
+        form.addView(button("自定义启动画面") { pendingImage = "splash"; imagePicker.launch(arrayOf("image/*")) })
 
         form.addView(label("自动设置"))
         form.addView(TextView(this).apply {
@@ -164,7 +181,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             if (html.isNullOrBlank()) {
                 Toast.makeText(this, "请先选择 HTML 文件", Toast.LENGTH_SHORT).show()
                 showHome()
-            } else webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "UTF-8", null)
+            } else webView.loadDataWithBaseURL(localHtmlBaseUrl ?: "file:///android_asset/", html, "text/html", "UTF-8", null)
         } else {
             val url = address.text.toString().trim()
             if (!url.startsWith("https://") && !url.startsWith("http://")) {
