@@ -3,6 +3,7 @@
     <application
         android:allowBackup="false"
         android:label="网页工坊"
+        android:icon="@drawable/ic_webworkshop"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
