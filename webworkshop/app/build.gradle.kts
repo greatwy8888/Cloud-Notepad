@@ -21,3 +21,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+
+dependencies {
+    implementation("androidx.activity:activity-ktx:1.9.3")
+}
