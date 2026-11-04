@@ -1,6 +1,5 @@
 package com.greatwy8888.webworkshop
 
-import android.app.Activity
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
@@ -13,7 +12,7 @@ import android.webkit.WebViewClient
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 
-class MainActivity : Activity() {
+class MainActivity : androidx.activity.ComponentActivity() {
     private lateinit var root: LinearLayout
     private lateinit var webView: WebView
     private lateinit var address: EditText
