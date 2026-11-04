@@ -10,7 +10,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : androidx.activity.ComponentActivity() {
     private lateinit var root: LinearLayout
@@ -177,7 +176,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     @Deprecated("Deprecated in Android")
     override fun onBackPressed() {
-        if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
-        else { super.onBackPressed(); showHome() }
+        if (::webView.isInitialized && webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            showHome()
+        }
     }
 }
