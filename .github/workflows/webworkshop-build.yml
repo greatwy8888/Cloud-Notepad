@@ -40,7 +40,7 @@ jobs:
         working-directory: vendor/apktool-android
         run: |
           # The Android AAR is downloaded from the tagged release below; only resolve/copy its runtime jars.
-          sed -i 's/dependsOn("assembleRelease")/\/\/ prebuilt AAR is used/' vendor/apktool-android/brut.apktool/apktool-android/build.gradle.kts
+          sed -i 's/dependsOn("assembleRelease")/\/\/ prebuilt AAR is used/' brut.apktool/apktool-android/build.gradle.kts
           timeout 600s gradle --no-daemon --console=plain :brut.apktool:apktool-android:collectRuntimeJars --stacktrace
           mkdir -p "$GITHUB_WORKSPACE/webworkshop/app/libs/apktool/runtime"
           mkdir -p "$GITHUB_WORKSPACE/webworkshop/app/libs/apktool"
