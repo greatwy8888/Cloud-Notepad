@@ -5,7 +5,7 @@
         android:label="网页工坊"
         android:icon="@drawable/ic_webworkshop"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.greatwy8888.webworkshop.fileprovider"
