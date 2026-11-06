@@ -126,7 +126,7 @@ object ApkGenerator {
         }
         val privateKey = store.getKey(alias, null) as PrivateKey
         val certificate = store.getCertificate(alias)
-        val signer = ApkSigner.SignerConfig.Builder("WebWorkshop", privateKey, listOf(certificate)).build()
+        val signer = ApkSigner.SignerConfig.Builder("WebWorkshop", privateKey, listOf(certificate as java.security.cert.X509Certificate)).build()
         ApkSigner.Builder(listOf(signer))
             .setInputApk(input)
             .setOutputApk(output)
