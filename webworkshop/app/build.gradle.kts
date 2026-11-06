@@ -41,7 +41,10 @@ android {
 
     packaging {
         jniLibs { useLegacyPackaging = true }
-        resources.excludes += setOf("prebuilt/linux/**", "prebuilt/macosx/**", "prebuilt/windows/**")
+        resources.excludes += setOf(
+            "prebuilt/linux/**", "prebuilt/macosx/**", "prebuilt/windows/**",
+            "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        )
     }
     androidResources { noCompress += "apk" }
 }
