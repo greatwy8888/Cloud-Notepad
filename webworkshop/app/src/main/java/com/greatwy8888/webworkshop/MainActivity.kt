@@ -39,7 +39,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 contentResolver.openInputStream(it)?.use { input -> htmlFile.outputStream().use { output -> input.copyTo(output) } }
                 localHtml = htmlFile.readText()
                 localHtmlBaseUrl = "file://${filesDir.absolutePath}/"
-                prefs.edit().putString("local_html_path", htmlFile.absolutePath).apply()
+                prefs.edit().putString("local_html_path", htmlFile.absolutePath)
+                    .putString("local_project_identity", "file:" + it.toString()).apply()
                 mode = "html"
                 status.text = "已选择本地 HTML：${it.lastPathSegment ?: "页面"}"
             } catch (e: Exception) {
@@ -60,7 +61,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     ?: throw IllegalStateException("文件夹中没有 index.html、index.htm 或 main.html")
                 localHtml = entry.readText()
                 localHtmlBaseUrl = "file://${target.absolutePath}/"
-                prefs.edit().putString("local_html_path", entry.absolutePath).putString("local_html_base", localHtmlBaseUrl).apply()
+                prefs.edit().putString("local_html_path", entry.absolutePath)
+                    .putString("local_html_base", localHtmlBaseUrl)
+                    .putString("local_project_identity", "tree:" + it.toString()).apply()
                 mode = "html"
                 status.text = "网页文件夹已导入，资源文件一并复制"
             } catch (e: Exception) {
@@ -213,7 +216,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
             localPath = prefs.getString("local_html_path", null),
             localBase = prefs.getString("local_html_base", null),
             iconUri = iconUri,
-            splashUri = splashUri
+            splashUri = splashUri,
+            projectIdentity = if (mode == "url") "url:" + url.trim() else
+                prefs.getString("local_project_identity", "") ?: ""
         )
         status.text = "正在本机离线构建 APK，请稍候……"
         Thread {
