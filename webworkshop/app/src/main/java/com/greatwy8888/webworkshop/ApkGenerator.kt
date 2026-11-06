@@ -106,7 +106,7 @@ object ApkGenerator {
 
         val unsigned = File(work, "unsigned.apk")
         ApkBuilder(decoded, config).build(unsigned)
-        val signed = File(context.filesDir, "exports/" + safeName(request.appName) + ".apk")
+        val signed = File(context.filesDir, "exports/" + safeName(request.appName) + "_" + packageName.substringAfterLast('.') + ".apk")
         signed.parentFile?.mkdirs()
         sign(context, packageName, unsigned, signed)
         return signed
