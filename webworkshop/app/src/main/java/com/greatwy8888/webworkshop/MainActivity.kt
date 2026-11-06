@@ -11,6 +11,10 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.*
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import androidx.core.content.FileProvider
 import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : androidx.activity.ComponentActivity() {
@@ -172,11 +176,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
         form.addView(status)
         form.addView(button("预览网页") { preview() }, LinearLayout.LayoutParams(-1, dp(50)))
-        form.addView(button("生成 APK") {
-            prefs.edit().putString("app_name", appName.text.toString().trim())
-                .putString("last_url", address.text.toString().trim()).apply()
-            status.text = "APK 本地构建引擎尚在集成中；当前版本可预览网页，暂不能导出 APK。"
-        }, LinearLayout.LayoutParams(-1, dp(52)))
+        form.addView(button("生成 APK") { generateApk() }, LinearLayout.LayoutParams(-1, dp(52)))
         form.addView(TextView(this).apply {
             text = "网址模式运行时直接打开原网站，需要网络。本地 HTML 模式将页面内容载入本机 WebView。"
             textSize = 11f; setTextColor(Color.rgb(120, 135, 150))
@@ -185,6 +185,42 @@ class MainActivity : androidx.activity.ComponentActivity() {
         scroll.addView(form)
         root.addView(scroll)
         setContentView(root)
+    }
+
+    private fun generateApk() {
+        val title = appName.text.toString().trim()
+        val url = address.text.toString().trim()
+        prefs.edit().putString("app_name", title).putString("last_url", url).apply()
+        val request = ApkGenerator.Request(
+            appName = title,
+            mode = mode,
+            url = url,
+            localPath = prefs.getString("local_html_path", null),
+            localBase = prefs.getString("local_html_base", null),
+            iconUri = iconUri,
+            splashUri = splashUri
+        )
+        status.text = "正在本机离线构建 APK，请稍候……"
+        Thread {
+            try {
+                val apk = ApkGenerator.build(this, request)
+                Handler(Looper.getMainLooper()).post {
+                    status.text = "生成成功：" + apk.name + "（" + apk.length() / 1024 + " KB）"
+                    Toast.makeText(this, "APK 已生成，正在打开安装界面", Toast.LENGTH_LONG).show()
+                    val uri = FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(intent)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("WebWorkshop", "APK generation failed", e)
+                Handler(Looper.getMainLooper()).post {
+                    status.text = "生成失败：" + (e.localizedMessage ?: e.javaClass.simpleName)
+                }
+            }
+        }.start()
     }
 
     private fun copySiteTree(source: DocumentFile, destination: File) {
