@@ -46,6 +46,37 @@ object ApkGenerator {
         return "com.webworkshop.app.p" + digest.take(12)
     }
 
+    fun resolvePackageName(context: Context, request: Request): String {
+        val stablePackage = packageNameFor(request.mode, request.projectIdentity)
+        val prefs = context.getSharedPreferences("webworkshop", Context.MODE_PRIVATE)
+        val mappingKey = "legacy_package_for_" + stablePackage.substringAfterLast('.')
+        prefs.getString(mappingKey, null)?.let { return it }
+
+        // The first prototype included the display name and copied-file path in the package hash.
+        // If its original AndroidKeyStore alias is still present, retain that package for an in-place upgrade.
+        val oldProjectIdentity = if (request.mode == "url") {
+            request.url.trim().lowercase()
+        } else {
+            val selected = File(request.localPath ?: "")
+            val base = request.localBase.orEmpty()
+            if (base.contains("site_project")) {
+                "local-folder:" + File(context.filesDir, "site_project").canonicalPath
+            } else {
+                "local-file:" + selected.canonicalPath
+            }
+        }
+        val oldIdentity = request.mode + "|" + request.appName.trim().lowercase() + "|" + oldProjectIdentity
+        val oldDigest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(oldIdentity.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        val legacyPackage = "com.webworkshop.app.p" + oldDigest.take(12)
+        if (SigningKeyManager.hasLegacyKey(legacyPackage)) {
+            prefs.edit().putString(mappingKey, legacyPackage).apply()
+            return legacyPackage
+        }
+        return stablePackage
+    }
+
     fun build(context: Context, request: Request): File {
         require(request.appName.isNotBlank()) { "请填写应用名称" }
         if (request.mode == "url") {
@@ -55,7 +86,7 @@ object ApkGenerator {
         }
 
         val prefs = context.getSharedPreferences("webworkshop", Context.MODE_PRIVATE)
-        val packageName = packageNameFor(request.mode, request.projectIdentity)
+        val packageName = resolvePackageName(context, request)
         val versionKey = "version_" + packageName.substringAfterLast('.').take(12)
         // Epoch seconds provide a monotonic baseline even after restoring a project key on a new phone.
         // The local counter still guarantees distinct builds made within the same second.
