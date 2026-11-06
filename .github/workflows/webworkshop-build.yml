@@ -18,6 +18,11 @@ jobs:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: anirudhmalik/apktool-android
+          ref: v1.0.0
+          path: /tmp/apktool-android
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -29,8 +34,15 @@ jobs:
         run: |
           yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
           ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-      - name: Build debug APK
-        run: gradle assembleDebug --stacktrace
+      - name: Prepare offline APK repackaging engine
+        working-directory: /tmp/apktool-android
+        run: |
+          gradle :brut.apktool:apktool-android:collectRuntimeJars --stacktrace
+          mkdir -p "$GITHUB_WORKSPACE/webworkshop/app/libs/apktool/runtime"
+          curl -L "https://github.com/anirudhmalik/apktool-android/releases/download/v1.0.0/apktool-android-1.0.0.aar" -o "$GITHUB_WORKSPACE/webworkshop/app/libs/apktool/apktool-android-1.0.0.aar"
+          cp brut.apktool/apktool-android/build/libs-bundle/*.jar "$GITHUB_WORKSPACE/webworkshop/app/libs/apktool/runtime/"
+      - name: Build template and WebWorkshop
+        run: gradle :template:assembleDebug :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: webworkshop-debug-apk
