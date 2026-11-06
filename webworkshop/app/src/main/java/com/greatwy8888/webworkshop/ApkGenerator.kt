@@ -45,15 +45,18 @@ object ApkGenerator {
         }
 
         val prefs = context.getSharedPreferences("webworkshop", Context.MODE_PRIVATE)
-        val inputIdentity = if (request.mode == "url") {
+        val projectIdentity = if (request.mode == "url") {
             request.url.trim().lowercase()
         } else {
-            val source = File(request.localPath!!)
+            val selected = File(request.localPath!!)
             val base = request.localBase.orEmpty()
-            val root = if (base.contains("site_project")) File(context.filesDir, "site_project") else source
-            hashInput(root)
+            if (base.contains("site_project")) {
+                "local-folder:" + File(context.filesDir, "site_project").canonicalPath
+            } else {
+                "local-file:" + selected.canonicalPath
+            }
         }
-        val identity = request.mode + "|" + request.appName.trim().lowercase() + "|" + inputIdentity
+        val identity = request.mode + "|" + request.appName.trim().lowercase() + "|" + projectIdentity
         val digest = java.security.MessageDigest.getInstance("SHA-256")
             .digest(identity.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
@@ -158,33 +161,6 @@ object ApkGenerator {
         FileOutputStream(target).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         oldResource.delete()
         bitmap.recycle()
-    }
-
-    private fun hashInput(file: File): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        if (file.isDirectory) {
-            file.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(file).invariantSeparatorsPath }.forEach { child ->
-                digest.update(child.relativeTo(file).invariantSeparatorsPath.toByteArray(Charsets.UTF_8))
-                child.inputStream().use { input ->
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        digest.update(buffer, 0, count)
-                    }
-                }
-            }
-        } else {
-            file.inputStream().use { input ->
-                val buffer = ByteArray(8192)
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    digest.update(buffer, 0, count)
-                }
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun copyTree(source: File, destination: File) {
