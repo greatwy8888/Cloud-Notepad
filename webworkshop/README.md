@@ -1,17 +1,25 @@
 # 网页工坊（WebWorkshop）
 
-一个简洁的 Android 网页应用制作工具，规划为两种模式：
+网页工坊在 Android 手机上本机生成独立 APK：
 
-1. **网址模式**：输入网址，生成安装后直接打开该网站的独立 APK。网站内容由远程网站提供，因此访问时需要网络。
-2. **本地 HTML 模式**：选择本地 HTML 页面，连同其本地资源一起封装进 APK，安装后离线运行。
+- **网址模式**：生成的 APK 直接打开原网站，运行时需要网络。
+- **本地网页模式**：导入 HTML 文件夹，将 HTML/CSS/JS/图片等本地资源一并封装，生成的 APK 可离线运行。
+- 每个来源项目使用独立包名、签名身份和版本 code。
+- 修改同一项目网页内容或显示名称后重新生成，沿用原包名与签名证书，可覆盖安装升级。
+- 每个项目签名可以通过密码保护的 PKCS#12 文件备份和恢复，供换机、重装网页工坊后继续升级。
+- 网页工坊自身固定包名为 `com.greatwy8888.webworkshop`，正式版必须始终使用同一 GitHub Actions release keystore。
 
-## 当前阶段
+## 正式构建与签名
 
-当前版本已具备网址预览、单个 HTML 导入、完整网页文件夹导入（递归复制 CSS、JS、图片等相对资源）和导入内容的本机持久保存。自定义图标/启动画面选择项也已接入本机 URI 权限保存。**尚未实现 APK 二次构建、真正将图标/启动画面写入导出 APK、客户应用签名密钥生成与备份**。不会把预览按钮误称为 APK 生成。
+GitHub Actions 通过 `WEBWORKSHOP_RELEASE_KEYSTORE_BASE64`、`WEBWORKSHOP_RELEASE_STORE_PASSWORD`、`WEBWORKSHOP_RELEASE_KEY_ALIAS`、`WEBWORKSHOP_RELEASE_KEY_PASSWORD` 四个 Repository Secrets 签署网页工坊自身 APK。
 
-## 重要的离线构建说明
+未配置这些 Secrets 时，Actions 只会产出不可用于跨构建升级的 debug 预览 APK。正式版必须检查 Actions 中的 `webworkshop-release-apk` artifact，并使用固定 JKS。
 
-要在 Android 手机上完全离线生成其他 APK，需要将 Android 构建工具链、平台组件和依赖以可维护的方式集成到应用内，工作量和存储占用都明显高于普通 WebView 应用。先验证基础工程，再逐步实现本地打包器。GitHub Actions 仅用于构建“网页工坊”自身的测试 APK，不参与用户日常生成。
+## 生成应用签名
+
+每个生成项目的 PKCS#12 私钥在本机生成，使用 AndroidKeyStore AES-GCM 加密保存。建议每次生成首个 APK 后立即点“备份当前项目签名”，将加密备份保存在手机以外的安全位置。更换手机或清除网页工坊数据后，重新选择同一个项目来源并恢复对应备份，再生成 APK 即可继续覆盖升级。
+
+**不要丢失签名备份或备份密码。** Android 不允许用另一把签名密钥覆盖安装同包名应用。
 
 ## Build
 
