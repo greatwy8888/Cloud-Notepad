@@ -59,20 +59,24 @@ jobs:
           WEBWORKSHOP_RELEASE_KEY_ALIAS: ${{ secrets.WEBWORKSHOP_RELEASE_KEY_ALIAS }}
           WEBWORKSHOP_RELEASE_KEY_PASSWORD: ${{ secrets.WEBWORKSHOP_RELEASE_KEY_PASSWORD }}
         run: |
-          if [ -n "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" ] && [ -n "$WEBWORKSHOP_RELEASE_STORE_PASSWORD" ] && [ -n "$WEBWORKSHOP_RELEASE_KEY_ALIAS" ] && [ -n "$WEBWORKSHOP_RELEASE_KEY_PASSWORD" ]; then
-            echo "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/webworkshop-release.jks"
-            export WEBWORKSHOP_RELEASE_KEYSTORE_FILE="$RUNNER_TEMP/webworkshop-release.jks"
-            gradle --no-daemon --console=plain :template:assembleDebug :app:assembleRelease --stacktrace
-            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
-            cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/webworkshop.apk"
-            echo "## Signed release APK" >> "$GITHUB_STEP_SUMMARY"
-            echo "The APK is signed with the persistent WebWorkshop release key and supports in-place upgrades." >> "$GITHUB_STEP_SUMMARY"
-          else
-            gradle --no-daemon --console=plain :template:assembleDebug :app:assembleDebug --stacktrace
-            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/webworkshop.apk"
-            echo "## Debug preview only" >> "$GITHUB_STEP_SUMMARY"
-            echo "Persistent release signing secrets are missing. This APK is not suitable for upgrades across builds." >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          missing=()
+          [ -n "${WEBWORKSHOP_RELEASE_KEYSTORE_BASE64}" ] || missing+=(WEBWORKSHOP_RELEASE_KEYSTORE_BASE64)
+          [ -n "${WEBWORKSHOP_RELEASE_STORE_PASSWORD}" ] || missing+=(WEBWORKSHOP_RELEASE_STORE_PASSWORD)
+          [ -n "${WEBWORKSHOP_RELEASE_KEY_ALIAS}" ] || missing+=(WEBWORKSHOP_RELEASE_KEY_ALIAS)
+          [ -n "${WEBWORKSHOP_RELEASE_KEY_PASSWORD}" ] || missing+=(WEBWORKSHOP_RELEASE_KEY_PASSWORD)
+          if [ ${#missing[@]} -ne 0 ]; then
+            printf 'ERROR: Missing repository Actions secrets: %s\\n' "${missing[*]}"
+            exit 1
           fi
+          echo "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/webworkshop-release.jks"
+          export WEBWORKSHOP_RELEASE_KEYSTORE_FILE="$RUNNER_TEMP/webworkshop-release.jks"
+          keytool -list -keystore "$WEBWORKSHOP_RELEASE_KEYSTORE_FILE" -storepass "$WEBWORKSHOP_RELEASE_STORE_PASSWORD" -alias "$WEBWORKSHOP_RELEASE_KEY_ALIAS" >/dev/null
+          gradle --no-daemon --console=plain :template:assembleDebug :app:assembleRelease --stacktrace
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/webworkshop.apk"
+          echo "## Signed release APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "The APK is signed with the persistent WebWorkshop release key and supports in-place upgrades." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: webworkshop-apk
