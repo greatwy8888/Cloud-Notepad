@@ -15,6 +15,24 @@ android {
         versionName = "1.1.0"
     }
 
+
+    signingConfigs {
+        create("release") {
+            val storeFilePath = System.getenv("WEBWORKSHOP_RELEASE_KEYSTORE_FILE")
+            if (!storeFilePath.isNullOrBlank()) {
+                storeFile = file(storeFilePath)
+                storePassword = System.getenv("WEBWORKSHOP_RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("WEBWORKSHOP_RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("WEBWORKSHOP_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -32,6 +50,8 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
     implementation("com.android.tools.build:apksig:8.7.3") {
         exclude(group = "com.google.guava", module = "listenablefuture")
     }
