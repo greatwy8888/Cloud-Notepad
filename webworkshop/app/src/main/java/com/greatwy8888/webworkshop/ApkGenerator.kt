@@ -45,11 +45,15 @@ object ApkGenerator {
         }
 
         val prefs = context.getSharedPreferences("webworkshop", Context.MODE_PRIVATE)
-        var packageName = prefs.getString("generated_package", null)
-        if (packageName.isNullOrBlank()) {
-            packageName = "com.webworkshop.app.p" + java.util.UUID.randomUUID().toString().replace("-", "").take(12)
-            prefs.edit().putString("generated_package", packageName).apply()
-        }
+        val identity = request.mode + "|" + request.appName.trim().lowercase() + "|" +
+            if (request.mode == "url") request.url.trim().lowercase() else "local-html"
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(identity.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        val packageName = "com.webworkshop.app.p" + digest.take(12)
+        val versionKey = "version_" + digest.take(16)
+        val versionCode = prefs.getInt(versionKey, 0) + 1
+        prefs.edit().putInt(versionKey, versionCode).apply()
 
         val work = File(context.cacheDir, "apk_generation").apply { deleteRecursively(); mkdirs() }
         val template = File(work, "template.apk")
@@ -64,7 +68,9 @@ object ApkGenerator {
         val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         val document = factory.newDocumentBuilder().parse(manifest)
         val root = document.documentElement
-        root.setAttribute("package", packageName!!)
+        root.setAttribute("package", packageName)
+        root.setAttributeNS(ANDROID_NS, "android:versionCode", versionCode.toString())
+        root.setAttributeNS(ANDROID_NS, "android:versionName", "1.0." + (versionCode - 1))
         val app = root.getElementsByTagName("application").item(0) as Element
         app.setAttributeNS(ANDROID_NS, "android:label", request.appName.trim())
         app.setAttributeNS(ANDROID_NS, "android:allowBackup", "false")
