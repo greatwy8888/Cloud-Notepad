@@ -11,8 +11,8 @@ android {
         applicationId = "com.greatwy8888.webworkshop"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     compileOptions {
@@ -20,9 +20,32 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+
+    packaging {
+        jniLibs { useLegacyPackaging = true }
+        resources.excludes += setOf("prebuilt/linux/**", "prebuilt/macosx/**", "prebuilt/windows/**")
+    }
+    androidResources { noCompress += "apk" }
 }
 
 dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("com.android.tools.build:apksig:8.7.3")
+    implementation(files("libs/apktool/apktool-android-1.0.0.aar"))
+    implementation(fileTree(mapOf("dir" to "libs/apktool/runtime", "include" to listOf("*.jar"))))
 }
+
+val prepareGeneratedTemplate by tasks.registering {
+    dependsOn(":template:assembleDebug")
+    val output = layout.projectDirectory.dir("app/src/main/assets")
+    outputs.file(output.file("generated-template.apk"))
+    doLast {
+        val source = project(":template").layout.buildDirectory.file("outputs/apk/debug/template-debug.apk").get().asFile
+        check(source.exists()) { "Generated app template APK was not built: $source" }
+        output.asFile.mkdirs()
+        source.copyTo(output.file("generated-template.apk").asFile, overwrite = true)
+    }
+}
+tasks.named("preBuild").configure { dependsOn(prepareGeneratedTemplate) }
