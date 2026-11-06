@@ -107,7 +107,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 Handler(Looper.getMainLooper()).post { Toast.makeText(this, "签名备份已保存，请妥善保管", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
                 Handler(Looper.getMainLooper()).post { Toast.makeText(this, "备份失败：" + (e.localizedMessage ?: "未知错误"), Toast.LENGTH_LONG).show() }
-            } finally { password.fill('\\u0000'); pendingSigningPassword = null }
+            } finally { password.fill('\u0000'); pendingSigningPassword = null }
         }.start()
     }
     private val signingBackupOpenPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -123,7 +123,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 Handler(Looper.getMainLooper()).post { Toast.makeText(this, "签名密钥恢复成功；该项目后续 APK 可继续覆盖升级", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
                 Handler(Looper.getMainLooper()).post { Toast.makeText(this, "恢复失败：" + (e.localizedMessage ?: "密码错误或文件无效"), Toast.LENGTH_LONG).show() }
-            } finally { password.fill('\\u0000'); pendingSigningPassword = null }
+            } finally { password.fill('\u0000'); pendingSigningPassword = null }
         }.start()
     }
     private var generatedApk: File? = null
