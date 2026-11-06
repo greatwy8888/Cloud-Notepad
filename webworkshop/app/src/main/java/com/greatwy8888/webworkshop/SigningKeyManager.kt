@@ -93,6 +93,8 @@ object SigningKeyManager {
         localPassword.fill('\u0000')
     }
 
+    fun hasLegacyKey(packageName: String): Boolean = legacySigner(packageName) != null
+
     private fun legacySigner(packageName: String): Signer? {
         val alias = "webworkshop_" + packageName.substringAfterLast('.')
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
