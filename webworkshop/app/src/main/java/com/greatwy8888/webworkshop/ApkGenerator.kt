@@ -36,6 +36,15 @@ object ApkGenerator {
         val splashUri: Uri?
     )
 
+    fun packageNameFor(mode: String, projectIdentity: String): String {
+        require(projectIdentity.isNotBlank()) { "项目身份信息缺失，请重新选择网页来源" }
+        val identity = mode + "|" + projectIdentity.trim()
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(identity.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return "com.webworkshop.app.p" + digest.take(12)
+    }
+
     fun build(context: Context, request: Request): File {
         require(request.appName.isNotBlank()) { "请填写应用名称" }
         if (request.mode == "url") {
@@ -56,12 +65,7 @@ object ApkGenerator {
                 "local-file:" + selected.canonicalPath
             }
         }
-        require(request.projectIdentity.isNotBlank()) { "项目身份信息缺失，请重新选择网页来源" }
-        val identity = request.mode + "|" + request.projectIdentity.trim()
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-            .digest(identity.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-        val packageName = "com.webworkshop.app.p" + digest.take(12)
+        val packageName = packageNameFor(request.mode, request.projectIdentity)
         val versionKey = "version_" + digest.take(16)
         val versionCode = prefs.getInt(versionKey, 0) + 1
         prefs.edit().putInt(versionKey, versionCode).apply()
