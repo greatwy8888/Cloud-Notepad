@@ -58,18 +58,41 @@ jobs:
           WEBWORKSHOP_RELEASE_KEY_ALIAS: ${{ secrets.WEBWORKSHOP_RELEASE_KEY_ALIAS }}
           WEBWORKSHOP_RELEASE_KEY_PASSWORD: ${{ secrets.WEBWORKSHOP_RELEASE_KEY_PASSWORD }}
         run: |
-          test -n "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" || { echo "Missing WEBWORKSHOP_RELEASE_KEYSTORE_BASE64 repository secret"; exit 1; }
-          test -n "$WEBWORKSHOP_RELEASE_STORE_PASSWORD" || { echo "Missing WEBWORKSHOP_RELEASE_STORE_PASSWORD repository secret"; exit 1; }
-          test -n "$WEBWORKSHOP_RELEASE_KEY_ALIAS" || { echo "Missing WEBWORKSHOP_RELEASE_KEY_ALIAS repository secret"; exit 1; }
-          test -n "$WEBWORKSHOP_RELEASE_KEY_PASSWORD" || { echo "Missing WEBWORKSHOP_RELEASE_KEY_PASSWORD repository secret"; exit 1; }
-          echo "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/webworkshop-release.jks"
-          echo "WEBWORKSHOP_RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/webworkshop-release.jks" >> "$GITHUB_ENV"
-      - name: Build release APK
+          if [ -n "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" ] && [ -n "$WEBWORKSHOP_RELEASE_STORE_PASSWORD" ] && [ -n "$WEBWORKSHOP_RELEASE_KEY_ALIAS" ] && [ -n "$WEBWORKSHOP_RELEASE_KEY_PASSWORD" ]; then
+            echo "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/webworkshop-release.jks"
+            echo "WEBWORKSHOP_RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/webworkshop-release.jks" >> "$GITHUB_ENV"
+            echo "HAS_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
+          else
+            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
+            echo "Persistent signing secrets are not configured; building a non-upgradeable debug preview."
+          fi
+      - name: Build signed release APK
+        if: env.HAS_RELEASE_SIGNING == 'true'
         working-directory: webworkshop
+        env:
+          WEBWORKSHOP_RELEASE_STORE_PASSWORD: ${{ secrets.WEBWORKSHOP_RELEASE_STORE_PASSWORD }}
+          WEBWORKSHOP_RELEASE_KEY_ALIAS: ${{ secrets.WEBWORKSHOP_RELEASE_KEY_ALIAS }}
+          WEBWORKSHOP_RELEASE_KEY_PASSWORD: ${{ secrets.WEBWORKSHOP_RELEASE_KEY_PASSWORD }}
         run: timeout 1200s gradle --no-daemon --console=plain :template:assembleDebug :app:assembleRelease --stacktrace
       - name: Verify release APK signature
-        run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose webworkshop/app/build/outputs/apk/release/app-release.apk
+        if: env.HAS_RELEASE_SIGNING == 'true'
+        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose webworkshop/app/build/outputs/apk/release/app-release.apk
+      - name: Build debug preview (not upgradeable)
+        if: env.HAS_RELEASE_SIGNING != 'true'
+        working-directory: webworkshop
+        run: timeout 1200s gradle --no-daemon --console=plain :template:assembleDebug :app:assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_RELEASE_SIGNING == 'true'
+        with:
+          name: webworkshop-release-apk
+          path: webworkshop/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_RELEASE_SIGNING != 'true'
+        with:
+          name: webworkshop-debug-preview-not-upgradeable
+          path: webworkshop/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: webworkshop-release-apk
