@@ -18,9 +18,9 @@ GitHub Actions 通过以下四个 **Repository Secrets** 签署网页工坊自�
 - `WEBWORKSHOP_RELEASE_KEY_ALIAS`
 - `WEBWORKSHOP_RELEASE_KEY_PASSWORD`
 
-请在本仓库的 **Settings → Secrets and variables → Actions → Repository secrets** 中配置。仅当四项都能被新启动的工作流读取时，才会执行 `assembleRelease` 和 APK 签名校验；否则只生成 debug 预览版，不能保证跨构建覆盖升级。
+请在本仓库的 **Settings → Secrets and variables → Actions → Repository secrets** 中配置。工作流兼容读取 `WEBWORKSHOP_RELEASE_*` 和现有的 `ANDROID_*` 四项 Secret 名称；缺少任何一项或密钥不匹配时，构建会失败，不会发布未签名的 debug 包。
 
-Actions 上传的产物名称为 `webworkshop-apk`。下载后还应核对构建日志中是否出现 **Signed release APK**，不能仅凭任务显示成功就认定为正式签名版。
+正式版包名及公开证书已记录在 [`signing/WEBWORKSHOP_APP_IDENTITY.md`](signing/WEBWORKSHOP_APP_IDENTITY.md)，公开 X.509 证书文件为 [`signing/webworkshop-release-cert.pem`](signing/webworkshop-release-cert.pem)。Actions 上传的产物名称为 `webworkshop-apk`。构建日志必须显示 APK v2 签名验证通过，并且证书 SHA-256 指纹与身份记录一致。
 
 ## 生成应用签名
 
