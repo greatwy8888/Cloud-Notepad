@@ -1,7 +1,7 @@
 name: WebWorkshop Android Build
 
 concurrency:
-  group: webworkshop-build-${{ github.ref }}
+  group: webworkshop-build-v2-${{ github.ref }}
   cancel-in-progress: true
 
 on:
