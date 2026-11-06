@@ -56,7 +56,8 @@ object ApkGenerator {
                 "local-file:" + selected.canonicalPath
             }
         }
-        val identity = request.mode + "|" + request.appName.trim().lowercase() + "|" + projectIdentity
+        require(request.projectIdentity.isNotBlank()) { "项目身份信息缺失，请重新选择网页来源" }
+        val identity = request.mode + "|" + request.projectIdentity.trim()
         val digest = java.security.MessageDigest.getInstance("SHA-256")
             .digest(identity.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
@@ -123,26 +124,10 @@ object ApkGenerator {
     }
 
     private fun sign(context: Context, packageName: String, input: File, output: File) {
-        val alias = "webworkshop_" + packageName.substringAfterLast('.')
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        if (!store.containsAlias(alias)) {
-            val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore")
-            generator.initialize(
-                KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
-                    .setKeySize(2048)
-                    .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
-                    .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
-                    .setCertificateSubject(X500Principal("CN=WebWorkshop " + packageName))
-                    .setCertificateSerialNumber(BigInteger.valueOf(System.currentTimeMillis()))
-                    .setCertificateNotBefore(Date(System.currentTimeMillis() - 86400000L))
-                    .setCertificateNotAfter(Date(System.currentTimeMillis() + 30L * 365 * 86400000L))
-                    .build()
-            )
-            generator.generateKeyPair()
-        }
-        val privateKey = store.getKey(alias, null) as PrivateKey
-        val certificate = store.getCertificate(alias)
-        val signer = ApkSigner.SignerConfig.Builder("WebWorkshop", privateKey, listOf(certificate as java.security.cert.X509Certificate)).build()
+        val identity = SigningKeyManager.signer(context, packageName)
+        val signer = ApkSigner.SignerConfig.Builder(
+            "WebWorkshop", identity.privateKey, listOf(identity.certificate)
+        ).build()
         ApkSigner.Builder(listOf(signer))
             .setInputApk(input)
             .setOutputApk(output)
