@@ -37,3 +37,6 @@ gradle assembleDebug
 ```
 
 输出：`app/build/outputs/apk/debug/app-debug.apk`
+
+
+Release builds now require all four persistent-signing secrets. The workflow validates the keystore and prints the APK signer certificate fingerprint before publishing the artifact; it will fail rather than silently publish a debug APK.
