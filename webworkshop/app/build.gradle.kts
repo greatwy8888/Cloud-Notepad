@@ -32,7 +32,9 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.core:core-ktx:1.15.0")
-    implementation("com.android.tools.build:apksig:8.7.3")
+    implementation("com.android.tools.build:apksig:8.7.3") {
+        exclude(group = "com.google.guava", module = "listenablefuture")
+    }
     implementation(files("libs/apktool/apktool-android-1.0.0.aar"))
     implementation(fileTree(mapOf("dir" to "libs/apktool/runtime", "include" to listOf("*.jar"))))
 }
@@ -49,3 +51,8 @@ val prepareGeneratedTemplate by tasks.registering {
     }
 }
 tasks.named("preBuild").configure { dependsOn(prepareGeneratedTemplate) }
+
+
+configurations.configureEach {
+    exclude(group = "com.google.guava", module = "listenablefuture")
+}
