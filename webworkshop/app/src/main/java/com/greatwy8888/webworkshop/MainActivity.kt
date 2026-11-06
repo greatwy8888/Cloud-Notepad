@@ -12,6 +12,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.*
 import android.content.Intent
+import android.app.AlertDialog
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.FileProvider
@@ -85,6 +86,20 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
     }
     private var pendingImage = "icon"
+    private var generatedApk: File? = null
+    private val apkSavePicker = registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")) { uri ->
+        if (uri != null) {
+            try {
+                val source = generatedApk ?: throw IllegalStateException("没有可保存的 APK")
+                contentResolver.openOutputStream(uri)?.use { output -> source.inputStream().use { it.copyTo(output) } }
+                    ?: throw IllegalStateException("无法写入目标文件")
+                status.text = "APK 已保存到所选位置"
+                Toast.makeText(this, "APK 保存成功", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                status.text = "保存失败：" + (e.localizedMessage ?: "未知错误")
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -205,14 +220,15 @@ class MainActivity : androidx.activity.ComponentActivity() {
             try {
                 val apk = ApkGenerator.build(this, request)
                 Handler(Looper.getMainLooper()).post {
+                    generatedApk = apk
                     status.text = "生成成功：" + apk.name + "（" + apk.length() / 1024 + " KB）"
-                    Toast.makeText(this, "APK 已生成，正在打开安装界面", Toast.LENGTH_LONG).show()
-                    val uri = FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
-                    val intent = Intent(Intent.ACTION_VIEW).apply {
-                        setDataAndType(uri, "application/vnd.android.package-archive")
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    startActivity(intent)
+                    AlertDialog.Builder(this)
+                        .setTitle("APK 已生成")
+                        .setMessage("文件已在本机生成。可以立即安装，也可以保存到手机。")
+                        .setPositiveButton("立即安装") { _, _ -> installGeneratedApk(apk) }
+                        .setNeutralButton("保存到手机") { _, _ -> apkSavePicker.launch(apk.name) }
+                        .setNegativeButton("稍后") { _, _ -> }
+                        .show()
                 }
             } catch (e: Exception) {
                 android.util.Log.e("WebWorkshop", "APK generation failed", e)
@@ -221,6 +237,15 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 }
             }
         }.start()
+    }
+
+    private fun installGeneratedApk(apk: File) {
+        val uri = FileProvider.getUriForFile(this, packageName + ".fileprovider", apk)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(intent)
     }
 
     private fun copySiteTree(source: DocumentFile, destination: File) {
