@@ -51,7 +51,8 @@ jobs:
           rm -f "$GITHUB_WORKSPACE/webworkshop/app/libs/apktool/runtime/"bcprov*.jar
           rm -f "$GITHUB_WORKSPACE/webworkshop/app/libs/apktool/runtime/"bcpkix*.jar
           rm -f "$GITHUB_WORKSPACE/webworkshop/app/libs/apktool/runtime/"bcutil*.jar
-      - name: Configure persistent release signing
+      - name: Build APK with persistent signing when configured
+        working-directory: webworkshop
         env:
           WEBWORKSHOP_RELEASE_KEYSTORE_BASE64: ${{ secrets.WEBWORKSHOP_RELEASE_KEYSTORE_BASE64 }}
           WEBWORKSHOP_RELEASE_STORE_PASSWORD: ${{ secrets.WEBWORKSHOP_RELEASE_STORE_PASSWORD }}
@@ -60,37 +61,21 @@ jobs:
         run: |
           if [ -n "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" ] && [ -n "$WEBWORKSHOP_RELEASE_STORE_PASSWORD" ] && [ -n "$WEBWORKSHOP_RELEASE_KEY_ALIAS" ] && [ -n "$WEBWORKSHOP_RELEASE_KEY_PASSWORD" ]; then
             echo "$WEBWORKSHOP_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/webworkshop-release.jks"
-            echo "WEBWORKSHOP_RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/webworkshop-release.jks" >> "$GITHUB_ENV"
-            echo "HAS_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
+            export WEBWORKSHOP_RELEASE_KEYSTORE_FILE="$RUNNER_TEMP/webworkshop-release.jks"
+            gradle --no-daemon --console=plain :template:assembleDebug :app:assembleRelease --stacktrace
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+            cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/webworkshop.apk"
+            echo "## Signed release APK" >> "$GITHUB_STEP_SUMMARY"
+            echo "The APK is signed with the persistent WebWorkshop release key and supports in-place upgrades." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
-            echo "Persistent signing secrets are not configured; building a non-upgradeable debug preview."
+            gradle --no-daemon --console=plain :template:assembleDebug :app:assembleDebug --stacktrace
+            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/webworkshop.apk"
+            echo "## Debug preview only" >> "$GITHUB_STEP_SUMMARY"
+            echo "Persistent release signing secrets are missing. This APK is not suitable for upgrades across builds." >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Build signed release APK
-        if: env.HAS_RELEASE_SIGNING == 'true'
-        working-directory: webworkshop
-        env:
-          WEBWORKSHOP_RELEASE_STORE_PASSWORD: ${{ secrets.WEBWORKSHOP_RELEASE_STORE_PASSWORD }}
-          WEBWORKSHOP_RELEASE_KEY_ALIAS: ${{ secrets.WEBWORKSHOP_RELEASE_KEY_ALIAS }}
-          WEBWORKSHOP_RELEASE_KEY_PASSWORD: ${{ secrets.WEBWORKSHOP_RELEASE_KEY_PASSWORD }}
-        run: timeout 1200s gradle --no-daemon --console=plain :template:assembleDebug :app:assembleRelease --stacktrace
-      - name: Verify release APK signature
-        if: env.HAS_RELEASE_SIGNING == 'true'
-        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose webworkshop/app/build/outputs/apk/release/app-release.apk
-      - name: Build debug preview (not upgradeable)
-        if: env.HAS_RELEASE_SIGNING != 'true'
-        working-directory: webworkshop
-        run: timeout 1200s gradle --no-daemon --console=plain :template:assembleDebug :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
-        if: env.HAS_RELEASE_SIGNING == 'true'
         with:
-          name: webworkshop-release-apk
-          path: webworkshop/app/build/outputs/apk/release/app-release.apk
+          name: webworkshop-apk
+          path: ${{ runner.temp }}/webworkshop.apk
           retention-days: 30
-      - uses: actions/upload-artifact@v4
-        if: env.HAS_RELEASE_SIGNING != 'true'
-        with:
-          name: webworkshop-debug-preview-not-upgradeable
-          path: webworkshop/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 14
 
