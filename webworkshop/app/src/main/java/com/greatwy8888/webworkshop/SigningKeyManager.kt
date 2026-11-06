@@ -30,6 +30,9 @@ object SigningKeyManager {
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
 
     fun signer(context: Context, packageName: String): Signer {
+        // Compatibility: keep using keys created by the first prototype on this same device.
+        // AndroidKeyStore private keys cannot be exported, so these legacy projects cannot be backed up.
+        legacySigner(packageName)?.let { return it }
         val file = encryptedFile(context, packageName)
         if (!file.exists()) createLocalStore(context, packageName, file)
         val buffer = ByteBuffer.wrap(decrypt(context, file.readBytes()))
@@ -47,6 +50,9 @@ object SigningKeyManager {
     }
 
     fun exportBackup(context: Context, packageName: String, backupPassword: CharArray, output: File) {
+        if (legacySigner(packageName) != null) {
+            throw IllegalStateException("此项目使用旧版 AndroidKeyStore 签名，私钥不可导出。请保留原手机及网页工坊数据；新项目可使用可备份签名。")
+        }
         require(backupPassword.size >= 8) { "备份密码至少需要 8 位" }
         val buffer = ByteBuffer.wrap(decrypt(context, encryptedFile(context, packageName).readBytes()))
         val length = buffer.int
@@ -64,6 +70,9 @@ object SigningKeyManager {
     }
 
     fun importBackup(context: Context, packageName: String, backupPassword: CharArray, input: File) {
+        if (legacySigner(packageName) != null) {
+            throw IllegalStateException("本机已有该项目的旧版签名，不能直接替换，否则已安装 APK 将无法升级。")
+        }
         val source = KeyStore.getInstance("PKCS12").apply {
             FileInputStream(input).use { load(it, backupPassword) }
         }
@@ -71,6 +80,7 @@ object SigningKeyManager {
             ?: throw IllegalArgumentException("备份文件中没有签名私钥")
         val cert = source.getCertificate(STORE_ALIAS) as? X509Certificate
             ?: throw IllegalArgumentException("备份文件中没有签名证书")
+        require(cert.subjectX500Principal.name.contains(packageName)) { "该签名备份不属于当前项目，请选择正确的备份文件" }
         val localPassword = randomPassword()
         val localStore = KeyStore.getInstance("PKCS12").apply {
             load(null, localPassword)
@@ -81,6 +91,15 @@ object SigningKeyManager {
             writeBytes(encrypt(context, localStoreBytes(localStore, localPassword)))
         }
         localPassword.fill('\u0000')
+    }
+
+    private fun legacySigner(packageName: String): Signer? {
+        val alias = "webworkshop_" + packageName.substringAfterLast('.')
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        if (!store.containsAlias(alias)) return null
+        val key = store.getKey(alias, null) as? PrivateKey ?: return null
+        val cert = store.getCertificate(alias) as? X509Certificate ?: return null
+        return Signer(key, cert)
     }
 
     private fun createLocalStore(context: Context, packageName: String, file: File) {
