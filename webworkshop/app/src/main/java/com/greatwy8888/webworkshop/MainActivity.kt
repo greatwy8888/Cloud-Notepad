@@ -89,6 +89,43 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
     }
     private var pendingImage = "icon"
+
+    private var pendingSigningPackage: String? = null
+    private var pendingSigningPassword: CharArray? = null
+    private val signingBackupSavePicker = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/x-pkcs12")
+    ) { uri ->
+        val pkg = pendingSigningPackage
+        val password = pendingSigningPassword
+        if (uri != null && pkg != null && password != null) Thread {
+            try {
+                val temp = File(cacheDir, "webworkshop-signing-backup.p12")
+                SigningKeyManager.exportBackup(this, pkg, password, temp)
+                contentResolver.openOutputStream(uri)?.use { out -> temp.inputStream().use { it.copyTo(out) } }
+                    ?: throw IllegalStateException("无法写入备份文件")
+                temp.delete()
+                Handler(Looper.getMainLooper()).post { Toast.makeText(this, "签名备份已保存，请妥善保管", Toast.LENGTH_LONG).show() }
+            } catch (e: Exception) {
+                Handler(Looper.getMainLooper()).post { Toast.makeText(this, "备份失败：" + (e.localizedMessage ?: "未知错误"), Toast.LENGTH_LONG).show() }
+            } finally { password.fill('\\u0000'); pendingSigningPassword = null }
+        }.start()
+    }
+    private val signingBackupOpenPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val pkg = pendingSigningPackage
+        val password = pendingSigningPassword
+        if (uri != null && pkg != null && password != null) Thread {
+            try {
+                val temp = File(cacheDir, "webworkshop-signing-restore.p12")
+                contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use { input.copyTo(it) } }
+                    ?: throw IllegalStateException("无法读取备份文件")
+                SigningKeyManager.importBackup(this, pkg, password, temp)
+                temp.delete()
+                Handler(Looper.getMainLooper()).post { Toast.makeText(this, "签名密钥恢复成功；该项目后续 APK 可继续覆盖升级", Toast.LENGTH_LONG).show() }
+            } catch (e: Exception) {
+                Handler(Looper.getMainLooper()).post { Toast.makeText(this, "恢复失败：" + (e.localizedMessage ?: "密码错误或文件无效"), Toast.LENGTH_LONG).show() }
+            } finally { password.fill('\\u0000'); pendingSigningPassword = null }
+        }.start()
+    }
     private var generatedApk: File? = null
     private val apkSavePicker = registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")) { uri ->
         if (uri != null) {
@@ -187,6 +224,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
             text = "包名自动生成 · 签名密钥自动创建并保存在本机 · 版本号自动递增"
             textSize = 12f; setTextColor(Color.rgb(105, 124, 142))
         })
+        form.addView(button("备份当前项目签名（用于换机/恢复）") { backupCurrentSigning() })
+        form.addView(button("恢复项目签名备份（用于继续升级）") { restoreCurrentSigning() })
+
         status = TextView(this).apply {
             text = "请选择网址或本地 HTML"
             textSize = 12f; setTextColor(Color.rgb(38, 130, 105))
@@ -203,6 +243,51 @@ class MainActivity : androidx.activity.ComponentActivity() {
         scroll.addView(form)
         root.addView(scroll)
         setContentView(root)
+    }
+
+
+    private fun currentProjectPackage(): String {
+        val identity = if (mode == "url") "url:" + address.text.toString().trim()
+            else prefs.getString("local_project_identity", "") ?: ""
+        require(identity.isNotBlank()) { "请先选择网址或导入本地网页项目" }
+        return ApkGenerator.packageNameFor(mode, identity)
+    }
+
+    private fun askSigningPassword(title: String, action: (CharArray) -> Unit) {
+        val field = EditText(this).apply {
+            hint = "至少 8 位，请妥善记住"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        AlertDialog.Builder(this).setTitle(title).setView(field)
+            .setPositiveButton("继续") { _, _ ->
+                val value = field.text.toString().toCharArray()
+                if (value.size < 8) Toast.makeText(this, "密码至少需要 8 位", Toast.LENGTH_SHORT).show()
+                else action(value)
+            }.setNegativeButton("取消", null).show()
+    }
+
+    private fun backupCurrentSigning() {
+        try {
+            pendingSigningPackage = currentProjectPackage()
+            askSigningPassword("设置签名备份密码") { password ->
+                pendingSigningPassword = password
+                signingBackupSavePicker.launch("webworkshop-signing-backup.p12")
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, e.localizedMessage ?: "请先选择项目", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun restoreCurrentSigning() {
+        try {
+            pendingSigningPackage = currentProjectPackage()
+            askSigningPassword("输入签名备份密码") { password ->
+                pendingSigningPassword = password
+                signingBackupOpenPicker.launch(arrayOf("application/x-pkcs12", "application/octet-stream", "*/*"))
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, e.localizedMessage ?: "请先选择项目", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun generateApk() {
