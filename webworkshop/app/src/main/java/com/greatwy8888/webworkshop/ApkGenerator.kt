@@ -33,7 +33,8 @@ object ApkGenerator {
         val localPath: String?,
         val localBase: String?,
         val iconUri: Uri?,
-        val splashUri: Uri?
+        val splashUri: Uri?,
+        val projectIdentity: String
     )
 
     fun packageNameFor(mode: String, projectIdentity: String): String {
@@ -54,19 +55,8 @@ object ApkGenerator {
         }
 
         val prefs = context.getSharedPreferences("webworkshop", Context.MODE_PRIVATE)
-        val projectIdentity = if (request.mode == "url") {
-            request.url.trim().lowercase()
-        } else {
-            val selected = File(request.localPath!!)
-            val base = request.localBase.orEmpty()
-            if (base.contains("site_project")) {
-                "local-folder:" + File(context.filesDir, "site_project").canonicalPath
-            } else {
-                "local-file:" + selected.canonicalPath
-            }
-        }
         val packageName = packageNameFor(request.mode, request.projectIdentity)
-        val versionKey = "version_" + digest.take(16)
+        val versionKey = "version_" + packageName.substringAfterLast('.').take(12)
         // Epoch seconds provide a monotonic baseline even after restoring a project key on a new phone.
         // The local counter still guarantees distinct builds made within the same second.
         val versionCode = maxOf(prefs.getInt(versionKey, 0) + 1, (System.currentTimeMillis() / 1000L).toInt())
