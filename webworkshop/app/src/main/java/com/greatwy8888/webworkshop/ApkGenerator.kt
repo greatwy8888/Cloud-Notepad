@@ -67,7 +67,9 @@ object ApkGenerator {
         }
         val packageName = packageNameFor(request.mode, request.projectIdentity)
         val versionKey = "version_" + digest.take(16)
-        val versionCode = prefs.getInt(versionKey, 0) + 1
+        // Epoch seconds provide a monotonic baseline even after restoring a project key on a new phone.
+        // The local counter still guarantees distinct builds made within the same second.
+        val versionCode = maxOf(prefs.getInt(versionKey, 0) + 1, (System.currentTimeMillis() / 1000L).toInt())
         prefs.edit().putInt(versionKey, versionCode).apply()
 
         val work = File(context.cacheDir, "apk_generation").apply { deleteRecursively(); mkdirs() }
