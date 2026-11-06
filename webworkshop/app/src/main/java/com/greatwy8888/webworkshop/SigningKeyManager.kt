@@ -42,7 +42,7 @@ object SigningKeyManager {
             ?: throw IllegalStateException("找不到项目签名私钥")
         val cert = store.getCertificate(STORE_ALIAS) as? X509Certificate
             ?: throw IllegalStateException("找不到项目签名证书")
-        password.fill('\\u0000')
+        password.fill('\u0000')
         return Signer(key, cert)
     }
 
@@ -60,7 +60,7 @@ object SigningKeyManager {
             setKeyEntry(STORE_ALIAS, key, backupPassword, arrayOf(cert))
         }
         FileOutputStream(output).use { backup.store(it, backupPassword) }
-        localPassword.fill('\\u0000')
+        localPassword.fill('\u0000')
     }
 
     fun importBackup(context: Context, packageName: String, backupPassword: CharArray, input: File) {
@@ -80,7 +80,7 @@ object SigningKeyManager {
             parentFile?.mkdirs()
             writeBytes(encrypt(context, localStoreBytes(localStore, localPassword)))
         }
-        localPassword.fill('\\u0000')
+        localPassword.fill('\u0000')
     }
 
     private fun createLocalStore(context: Context, packageName: String, file: File) {
@@ -104,7 +104,7 @@ object SigningKeyManager {
         }
         file.parentFile?.mkdirs()
         file.writeBytes(encrypt(context, localStoreBytes(store, password)))
-        password.fill('\\u0000')
+        password.fill('\u0000')
     }
 
     private fun localStoreBytes(store: KeyStore, password: CharArray): ByteArray {
