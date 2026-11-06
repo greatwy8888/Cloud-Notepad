@@ -247,10 +247,19 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
 
     private fun currentProjectPackage(): String {
-        val identity = if (mode == "url") "url:" + address.text.toString().trim()
+        val title = appName.text.toString().trim()
+        val url = address.text.toString().trim()
+        val identity = if (mode == "url") "url:" + url
             else prefs.getString("local_project_identity", "") ?: ""
         require(identity.isNotBlank()) { "请先选择网址或导入本地网页项目" }
-        return ApkGenerator.packageNameFor(mode, identity)
+        require(title.isNotBlank()) { "请先填写应用名称" }
+        val request = ApkGenerator.Request(
+            appName = title, mode = mode, url = url,
+            localPath = prefs.getString("local_html_path", null),
+            localBase = prefs.getString("local_html_base", null),
+            iconUri = iconUri, splashUri = splashUri, projectIdentity = identity
+        )
+        return ApkGenerator.resolvePackageName(this, request)
     }
 
     private fun askSigningPassword(title: String, action: (CharArray) -> Unit) {
