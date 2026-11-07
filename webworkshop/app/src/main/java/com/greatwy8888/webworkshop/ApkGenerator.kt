@@ -242,21 +242,27 @@ object ApkGenerator {
             val options = BitmapFactory.Options().apply { inSampleSize = sample }
             val decoded = source.inputStream().use { BitmapFactory.decodeStream(it, null, options) }
                 ?: throw IllegalStateException("图片解码失败")
-            val ratio = minOf(maxWidth.toFloat() / decoded.width, maxHeight.toFloat() / decoded.height, 1f)
-            val width = (decoded.width * ratio).toInt().coerceAtLeast(1)
-            val height = (decoded.height * ratio).toInt().coerceAtLeast(1)
-            val bitmap = if (width == decoded.width && height == decoded.height) decoded
-                else Bitmap.createScaledBitmap(decoded, width, height, true).also {
-                    if (it !== decoded) decoded.recycle()
-                }
+            // The generated splash resource is always a 9:16 canvas. Fit the original
+            // image inside it (never crop or stretch), center it, and use black letterboxing.
+            val canvasBitmap = Bitmap.createBitmap(maxWidth, maxHeight, Bitmap.Config.ARGB_8888)
             try {
+                val canvas = android.graphics.Canvas(canvasBitmap)
+                canvas.drawColor(Color.BLACK)
+                val scale = minOf(maxWidth.toFloat() / decoded.width, maxHeight.toFloat() / decoded.height)
+                val drawWidth = decoded.width * scale
+                val drawHeight = decoded.height * scale
+                val left = (maxWidth - drawWidth) / 2f
+                val top = (maxHeight - drawHeight) / 2f
+                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+                canvas.drawBitmap(decoded, null, android.graphics.RectF(left, top, left + drawWidth, top + drawHeight), paint)
                 val target = File(oldResource.parentFile, oldResource.nameWithoutExtension + ".png")
                 FileOutputStream(target).use {
-                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) { "图片转换失败" }
+                    check(canvasBitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) { "图片转换失败" }
                 }
                 oldResource.delete()
             } finally {
-                bitmap.recycle()
+                canvasBitmap.recycle()
+                decoded.recycle()
             }
         } finally {
             source.delete()
