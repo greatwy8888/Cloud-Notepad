@@ -203,6 +203,13 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        web.evaluateJavascript("window.handleAndroidBack && window.handleAndroidBack()", null)
+        // Let the web UI close its topmost layer first. If nothing is open,
+        // navigate WebView history; only then leave the app.
+        web.evaluateJavascript(
+            "(function(){return !!(window.handleAndroidBack && window.handleAndroidBack());})()"
+        ) { result ->
+            if (result == "true") return@evaluateJavascript
+            if (web.canGoBack()) web.goBack() else finish()
+        }
     }
 }
