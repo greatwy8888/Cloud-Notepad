@@ -48,12 +48,12 @@ val restoreOfflineEditorHtml by tasks.registering {
         // Center first-run setup and unlock labels using the actual element IDs.
         html = html.replace(
             "</style>",
-            "#auth #authBtn{display:flex!important;align-items:center;justify-content:center;text-align:center;}\\n</style>"
+            "#auth #authBtn{display:flex!important;align-items:center;justify-content:center;text-align:center;}\n</style>"
         )
         // Remove any legacy button whose visible label contains 富文本.
         html = html.replace(
             "</script>",
-            "document.querySelectorAll('button').forEach(b=>{if((b.textContent||'').includes('富文本'))b.remove()});\\n</script>"
+            "document.querySelectorAll('button').forEach(b=>{if((b.textContent||'').includes('富文本'))b.remove()});\n</script>"
         )
         // Decode selected local files by BOM/UTF-8 first, then GB18030 (common Chinese Windows encoding).
         html = html.replace(
@@ -72,29 +72,6 @@ val restoreOfflineEditorHtml by tasks.registering {
         html = html.replace("pre.textContent=r.result;", "pre.textContent=fileText;")
         html = html.replace("$('editor').innerHTML=r.result;", "$('editor').innerHTML=fileText;")
         html = html.replace("r.readAsText(f);", "r.readAsArrayBuffer(f);")
-        // Remove the legacy rich-text mode toggle by its stable element id.
-        html = html.replace(
-            Regex("""<button\b(?=[^>]*\bid=["']modeRich["'])[^>]*>.*?</button>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)),
-            ""
-        )
-        // Center both the first-run setup and later unlock button labels.
-        html = html.replace(
-            "</style>",
-            "#authOverlay #authSubmit{display:flex!important;align-items:center;justify-content:center;text-align:center;}\n</style>"
-        )
-        // Close nested layers, then lock the editor, then let Android exit.
-        val oldBack = "window.handleAndroidBack = function(){ if(previewOverlay.classList.contains('active')){closeImagePreview();return true;} if(document.getElementById('confirmOverlay').classList.contains('active')){hideConfirm();return true;} showConfirm('确定要离开吗？\\n\\n未保存的内容将丢失！',function(){lockApp();}); return true; };"
-        val newBack = """window.handleAndroidBack = function(){
-            if (previewOverlay.classList.contains('active')) { closeImagePreview(); return true; }
-            var confirmLayer = document.getElementById('confirmOverlay');
-            if (confirmLayer && confirmLayer.classList.contains('active')) { hideConfirm(); return true; }
-            var passwordLayer = document.getElementById('pwdModal');
-            if (passwordLayer && getComputedStyle(passwordLayer).display !== 'none') { passwordLayer.style.display = 'none'; return true; }
-            var root = document.getElementById('appRoot');
-            if (root && !root.classList.contains('hidden')) { lockApp(); return true; }
-            return false;
-        };"""
-        if (html.contains(oldBack)) html = html.replace(oldBack, newBack)
         destination.writeText(html)
     }
 }
