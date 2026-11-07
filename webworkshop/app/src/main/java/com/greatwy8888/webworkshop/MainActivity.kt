@@ -181,7 +181,61 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 mode = "html"
             }
         }
-        showHome()
+        showSplashThenHome()
+    }
+
+    // Keep the original image ratio. FIT_CENTER fills as much of the screen as possible
+    // and leaves black letterboxing rather than cropping or distorting the image.
+    private fun showSplashThenHome() {
+        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE)
+        val splash = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val image = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(Color.BLACK)
+        }
+        val selected = splashUri
+        if (selected != null) {
+            try {
+                val bitmap = if (selected.scheme == "file") {
+                    android.graphics.BitmapFactory.decodeFile(selected.path)
+                } else contentResolver.openInputStream(selected)?.use {
+                    android.graphics.BitmapFactory.decodeStream(it)
+                }
+                if (bitmap != null) image.setImageBitmap(bitmap)
+            } catch (_: Exception) { }
+        }
+        if (image.drawable == null) {
+            val fallback = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER
+                setBackgroundColor(Color.rgb(238, 245, 252))
+                addView(TextView(this@MainActivity).apply {
+                    text = "网页工坊"
+                    textSize = 32f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    setTextColor(Color.rgb(35, 89, 139))
+                    gravity = android.view.Gravity.CENTER
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = "把网页变成独立应用"
+                    textSize = 14f
+                    setTextColor(Color.rgb(104, 126, 148))
+                    gravity = android.view.Gravity.CENTER
+                    setPadding(0, dp(10), 0, 0)
+                })
+            }
+            splash.addView(fallback, android.widget.FrameLayout.LayoutParams(-1, -1))
+        } else {
+            splash.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }
+        setContentView(splash)
+        Handler(Looper.getMainLooper()).postDelayed({
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+            showHome()
+        }, 3000L)
     }
 
     private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int, kind: String): LinearLayout {
@@ -262,20 +316,52 @@ class MainActivity : androidx.activity.ComponentActivity() {
         text = value; textSize = 14f; setTextColor(Color.rgb(49, 69, 89))
         setPadding(0, dp(14), 0, dp(5))
     }
+    private fun roundedBackground(color: Int, stroke: Int = Color.TRANSPARENT) =
+        android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+            cornerRadius = dp(14).toFloat()
+            setColor(color)
+            if (stroke != Color.TRANSPARENT) setStroke(dp(1), stroke)
+        }
+
     private fun button(value: String, action: () -> Unit) = Button(this).apply {
-        text = value; setOnClickListener { action() }
+        text = value
+        isAllCaps = false
+        textSize = 14f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        setTextColor(Color.rgb(43, 83, 122))
+        background = roundedBackground(Color.rgb(232, 241, 250), Color.rgb(213, 228, 242))
+        elevation = dp(2).toFloat()
+        minimumHeight = dp(48)
+        setPadding(dp(14), dp(10), dp(14), dp(10))
+        stateListAnimator = null
+        setOnClickListener { action() }
+    }
+
+    private fun primaryButton(value: String, action: () -> Unit) = Button(this).apply {
+        text = value
+        isAllCaps = false
+        textSize = 15f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        setTextColor(Color.WHITE)
+        background = roundedBackground(Color.rgb(43, 117, 190))
+        elevation = dp(4).toFloat()
+        minimumHeight = dp(52)
+        setPadding(dp(16), dp(10), dp(16), dp(10))
+        stateListAnimator = null
+        setOnClickListener { action() }
     }
 
     private fun showHome() {
         showingPreview = false
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(26), dp(22), dp(24))
-            setBackgroundColor(Color.rgb(247, 250, 253))
+            setPadding(dp(18), dp(20), dp(18), dp(20))
+            setBackgroundColor(Color.rgb(242, 247, 252))
         }
         root.addView(TextView(this).apply {
-            text = "网页工坊"; textSize = 28f
-            setTextColor(Color.rgb(25, 52, 78))
+            text = "网页工坊"; textSize = 30f
+            setTextColor(Color.rgb(28, 70, 111))
             setTypeface(null, android.graphics.Typeface.BOLD)
         })
         root.addView(TextView(this).apply {
@@ -285,7 +371,12 @@ class MainActivity : androidx.activity.ComponentActivity() {
         })
 
         val scroll = ScrollView(this)
-        val form = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(18))
+            background = roundedBackground(Color.WHITE, Color.rgb(225, 234, 243))
+            elevation = dp(2).toFloat()
+        }
         val tabs = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
         val urlMode = RadioButton(this).apply { text = "输入网址"; id = View.generateViewId(); isChecked = mode == "url" }
         val htmlMode = RadioButton(this).apply { text = "本地 HTML"; id = View.generateViewId(); isChecked = mode == "html" }
@@ -298,7 +389,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             hint = "https://www.example.com"; isSingleLine = true; textSize = 15f
             setText(prefs.getString("last_url", ""))
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            setBackgroundColor(Color.WHITE)
+            background = roundedBackground(Color.rgb(248, 251, 254), Color.rgb(220, 230, 240))
         }
         form.addView(address, LinearLayout.LayoutParams(-1, dp(52)))
         form.addView(button("选择本地 HTML 文件") {
@@ -313,7 +404,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             hint = "例如：我的网站"; isSingleLine = true; textSize = 15f
             setText(prefs.getString("app_name", ""))
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            setBackgroundColor(Color.WHITE)
+            background = roundedBackground(Color.rgb(248, 251, 254), Color.rgb(220, 230, 240))
         }
         form.addView(appName, LinearLayout.LayoutParams(-1, dp(52)))
 
@@ -342,8 +433,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
             setPadding(0, dp(12), 0, dp(8))
         }
         form.addView(status)
-        form.addView(button("预览网页") { preview() }, LinearLayout.LayoutParams(-1, dp(50)))
-        form.addView(button("生成 APK") { generateApk() }, LinearLayout.LayoutParams(-1, dp(52)))
+        form.addView(button("预览网页") { preview() }, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(5) })
+        form.addView(primaryButton("生成 APK") { generateApk() }, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
         form.addView(TextView(this).apply {
             text = "网址模式运行时直接打开原网站，需要网络。本地 HTML 模式将页面内容载入本机 WebView。"
             textSize = 11f; setTextColor(Color.rgb(120, 135, 150))
@@ -512,8 +603,12 @@ class MainActivity : androidx.activity.ComponentActivity() {
             webViewClient = WebViewClient()
             webChromeClient = WebChromeClient()
         }
-        val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        page.addView(button("返回网页工坊") { showHome() }, LinearLayout.LayoutParams(-1, dp(48)))
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(242, 247, 252))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+        }
+        page.addView(button("‹  返回网页工坊") { showHome() }, LinearLayout.LayoutParams(-1, dp(48)))
         page.addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(page)
         if (mode == "html") {
