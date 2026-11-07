@@ -27,7 +27,7 @@ class GeneratedActivity : Activity() {
         web.webViewClient = WebViewClient()
         container.addView(web, FrameLayout.LayoutParams(-1, -1))
         val splashId = resources.getIdentifier("splash", "drawable", packageName)
-        if (splashId != 0) {
+        if (config.optBoolean("hasSplash", false) && splashId != 0) {
             splash = ImageView(this).apply {
                 setImageResource(splashId)
                 // The source image is prepared as 9:16. FIT_CENTER preserves its ratio;
