@@ -1,4 +1,7 @@
 import java.util.Base64
+import java.nio.ByteBuffer
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 import java.util.zip.GZIPInputStream
 
 plugins {
@@ -52,10 +55,10 @@ val restoreOfflineEditorHtml by tasks.registering {
             val candidates = listOf("UTF-8", "Big5", "GB18030")
             for (charsetName in candidates) {
                 try {
-                    val decoder = java.nio.charset.Charset.forName(charsetName).newDecoder()
-                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-                    return decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+                    val decoder = Charset.forName(charsetName).newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    return decoder.decode(ByteBuffer.wrap(bytes)).toString()
                 } catch (_: Exception) { }
             }
             return String(bytes, Charsets.UTF_8)
