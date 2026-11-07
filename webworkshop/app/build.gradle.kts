@@ -64,7 +64,7 @@ dependencies {
 
 val prepareGeneratedTemplate by tasks.registering {
     dependsOn(":template:assembleDebug")
-    val output = layout.projectDirectory.dir("app/src/main/assets")
+    val output = layout.projectDirectory.dir("src/main/assets")
     outputs.file(output.file("generated-template.apk"))
     doLast {
         val source = project(":template").layout.buildDirectory.file("outputs/apk/debug/template-debug.apk").get().asFile
