@@ -212,24 +212,41 @@ class MainActivity : androidx.activity.ComponentActivity() {
             return
         }
 
+        window.setFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN, android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
         window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
             or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE)
-        val splash = android.widget.FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
-        val image = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
+            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+        val splash = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val image = object : ImageView(this) {
+            override fun onDraw(canvas: android.graphics.Canvas) {
+                val source = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return
+                val scale = minOf(width.toFloat() / source.width, height.toFloat() / source.height)
+                val w = source.width * scale
+                val h = source.height * scale
+                val target = android.graphics.RectF((width - w) / 2f, (height - h) / 2f,
+                    (width + w) / 2f, (height + h) / 2f)
+                canvas.drawColor(Color.BLACK)
+                canvas.drawBitmap(source, null, target,
+                    android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
+            }
+        }.apply {
             setBackgroundColor(Color.BLACK)
             setImageBitmap(bitmap)
+            scaleType = ImageView.ScaleType.MATRIX
+            contentDescription = "启动画面"
         }
         splash.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
         setContentView(splash)
-        Handler(Looper.getMainLooper()).postDelayed({
-            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-            showHome()
-        }, 3000L)
+        splash.post {
+            Handler(Looper.getMainLooper()).postDelayed({
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+                showHome()
+            }, 3000L)
+        }
     }
 
     private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int, kind: String): LinearLayout {
@@ -296,9 +313,16 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 setMargins(0, dp(7), dp(7), 0)
             })
         }
+        frame.isClickable = true
+        frame.isFocusable = true
+        frame.contentDescription = if (kind == "icon") "点击添加或更换应用图标" else "点击添加或更换启动画面"
+        frame.setOnClickListener {
+            pendingImage = kind
+            imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
+        }
         panel.addView(frame, LinearLayout.LayoutParams(-1, previewHeight))
         panel.addView(TextView(this).apply {
-            text = if (uri == null) "尚未选择图片" else "已选择图片 · 预览按比例缩放（右上角 × 删除）"
+            text = if (uri == null) "点击上方区域选择图片" else "已选择图片 · 点击图片可更换，右上角 × 删除"
             textSize = 11f
             setTextColor(Color.rgb(120, 135, 150))
         })
@@ -350,19 +374,23 @@ class MainActivity : androidx.activity.ComponentActivity() {
         showingPreview = false
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(20), dp(18), dp(20))
+            setPadding(dp(16), dp(12), dp(16), dp(20))
             setBackgroundColor(Color.rgb(242, 247, 252))
         }
-        root.addView(TextView(this).apply {
-            text = "网页工坊"; textSize = 30f
-            setTextColor(Color.rgb(28, 70, 111))
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        })
-        root.addView(TextView(this).apply {
-            text = "简单几步，把网页制作成独立应用"
-            textSize = 13f; setTextColor(Color.rgb(105, 124, 142))
-            setPadding(0, dp(5), 0, dp(12))
-        })
+        val header = android.widget.FrameLayout(this)
+        val menu = TextView(this).apply {
+            text = "☰"; textSize = 25f; gravity = android.view.Gravity.CENTER
+            setTextColor(Color.rgb(43, 83, 122)); isClickable = true; isFocusable = true
+            contentDescription = "历史制作"
+            setOnClickListener { showHistoryDialog() }
+        }
+        header.addView(menu, android.widget.FrameLayout.LayoutParams(dp(48), dp(48), android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL))
+        val heading = TextView(this).apply {
+            text = "网页工坊"; textSize = 25f; gravity = android.view.Gravity.CENTER
+            setTextColor(Color.rgb(28, 70, 111)); setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        header.addView(heading, android.widget.FrameLayout.LayoutParams(-1, dp(48)))
+        root.addView(header, LinearLayout.LayoutParams(-1, dp(52)))
 
         val scroll = ScrollView(this)
         val form = LinearLayout(this).apply {
@@ -408,18 +436,18 @@ class MainActivity : androidx.activity.ComponentActivity() {
             textSize = 12f; setTextColor(Color.rgb(105, 124, 142))
             setPadding(0, dp(2), 0, dp(8))
         })
-        form.addView(button("自定义应用图标") { pendingImage = "icon"; imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp")) })
-        form.addView(imagePreview(iconUri, "应用图标预览", dp(112), "icon"))
-        form.addView(button("自定义启动画面") { pendingImage = "splash"; imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp")) })
-        form.addView(imagePreview(splashUri, "启动画面预览", dp(220), "splash"))
+        form.addView(imagePreview(iconUri, "应用图标（点击图片区域添加或更换）", dp(112), "icon"))
+        form.addView(imagePreview(splashUri, "启动画面（点击图片区域添加或更换）", dp(220), "splash"))
 
         form.addView(label("自动设置"))
         form.addView(TextView(this).apply {
             text = "包名自动生成 · 签名密钥自动创建并保存在本机 · 版本号自动递增"
             textSize = 12f; setTextColor(Color.rgb(105, 124, 142))
         })
-        form.addView(button("备份当前项目签名（用于换机/恢复）") { backupCurrentSigning() })
-        form.addView(button("恢复项目签名备份（用于继续升级）") { restoreCurrentSigning() })
+        form.addView(button("备份当前项目签名（用于换机/恢复）") { backupCurrentSigning() },
+            LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(8); bottomMargin = dp(7) })
+        form.addView(button("恢复项目签名备份（用于继续升级）") { restoreCurrentSigning() },
+            LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(7); bottomMargin = dp(8) })
 
         status = TextView(this).apply {
             text = "请选择网址或本地 HTML"
@@ -439,6 +467,64 @@ class MainActivity : androidx.activity.ComponentActivity() {
         setContentView(root)
     }
 
+
+
+    private fun saveBuildHistory(request: ApkGenerator.Request, apk: File) {
+        try {
+            val packageName = ApkGenerator.resolvePackageName(this, request)
+            val items = org.json.JSONArray(prefs.getString("build_history", "[]"))
+            val item = org.json.JSONObject().put("name", request.appName).put("mode", request.mode)
+                .put("package", packageName).put("path", apk.absolutePath)
+                .put("created", System.currentTimeMillis())
+                .put("source", if (request.mode == "url") request.url else "本地 HTML")
+            val updated = org.json.JSONArray().put(item)
+            for (i in 0 until minOf(items.length(), 49)) {
+                val old = items.optJSONObject(i) ?: continue
+                if (old.optString("path") != apk.absolutePath) updated.put(old)
+            }
+            prefs.edit().putString("build_history", updated.toString()).apply()
+        } catch (e: Exception) {
+            android.util.Log.w("WebWorkshop", "Unable to save build history", e)
+        }
+    }
+
+    private fun showHistoryDialog() {
+        val items = try { org.json.JSONArray(prefs.getString("build_history", "[]")) }
+            catch (_: Exception) { org.json.JSONArray() }
+        if (items.length() == 0) {
+            AlertDialog.Builder(this).setTitle("历史制作")
+                .setMessage("暂时没有制作记录。成功生成 APK 后，会自动保存在这里。")
+                .setPositiveButton("知道了", null).show()
+            return
+        }
+        val labels = Array(items.length()) { index ->
+            val item = items.optJSONObject(index) ?: org.json.JSONObject()
+            val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(item.optLong("created")))
+            val type = if (item.optString("mode") == "url") "网址" else "本地 HTML"
+            "$date  ·  ${item.optString("name", "未命名")}\\n$type  ·  ${item.optString("package")}"
+        }
+        AlertDialog.Builder(this).setTitle("历史制作（${items.length()}）")
+            .setItems(labels) { _, which ->
+                val item = items.optJSONObject(which) ?: return@setItems
+                val apk = File(item.optString("path"))
+                AlertDialog.Builder(this)
+                    .setTitle(item.optString("name", "历史 APK"))
+                    .setMessage("包名：${item.optString("package")}\\n来源：${item.optString("source")}\\n文件：${apk.name}")
+                    .setPositiveButton("安装 APK") { _, _ ->
+                        if (apk.isFile) installGeneratedApk(apk)
+                        else Toast.makeText(this, "APK 文件已不存在，请重新生成", Toast.LENGTH_LONG).show()
+                    }
+                    .setNeutralButton("删除记录") { _, _ ->
+                        val next = org.json.JSONArray()
+                        for (i in 0 until items.length()) if (i != which) next.put(items.optJSONObject(i))
+                        prefs.edit().putString("build_history", next.toString()).apply()
+                        Toast.makeText(this, "历史记录已删除", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("返回") { _, _ -> showHistoryDialog() }
+                    .show()
+            }.setNegativeButton("关闭", null).show()
+    }
 
     private fun currentProjectPackage(): String {
         val title = appName.text.toString().trim()
@@ -514,6 +600,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 val apk = ApkGenerator.build(this, request)
                 Handler(Looper.getMainLooper()).post {
                     generatedApk = apk
+                    saveBuildHistory(request, apk)
                     status.text = "生成成功：" + apk.name + "（" + apk.length() / 1024 + " KB）"
                     AlertDialog.Builder(this)
                         .setTitle("APK 已生成")
