@@ -66,7 +66,27 @@ val restoreOfflineEditorHtml by tasks.registering {
                 try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes)}
                 catch(e){try{return new TextDecoder('gb18030').decode(bytes)}catch(e2){return new TextDecoder('utf-8').decode(bytes)}}
             }
-            ${'"""
+            ${'
+        )
+        html = html.replace("r.onload=()=>{if(f.name", "r.onload=()=>{let fileText=decodeLocalFile(r.result);if(f.name")
+        html = html.replace("pre.textContent=r.result;", "pre.textContent=fileText;")
+        html = html.replace("$('editor').innerHTML=r.result;", "$('editor').innerHTML=fileText;")
+        html = html.replace("r.readAsText(f);", "r.readAsArrayBuffer(f);")
+        destination.writeText(html)
+    }
+}
+tasks.named("preBuild").configure { dependsOn(restoreOfflineEditorHtml) }
+}('open').onclick="""
+        )
+        html = html.replace("r.onload=()=>{if(f.name", "r.onload=()=>{let fileText=decodeLocalFile(r.result);if(f.name")
+        html = html.replace("pre.textContent=r.result;", "pre.textContent=fileText;")
+        html = html.replace("$('editor').innerHTML=r.result;", "$('editor').innerHTML=fileText;")
+        html = html.replace("r.readAsText(f);", "r.readAsArrayBuffer(f);")
+        destination.writeText(html)
+    }
+}
+tasks.named("preBuild").configure { dependsOn(restoreOfflineEditorHtml) }
+}('open').onclick="""
         )
         html = html.replace("r.onload=()=>{if(f.name", "r.onload=()=>{let fileText=decodeLocalFile(r.result);if(f.name")
         html = html.replace("pre.textContent=r.result;", "pre.textContent=fileText;")
