@@ -1,19 +1,24 @@
 package com.greatwy8888.webworkshop.template
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.os.Handler
 import android.os.Looper
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+
 import org.json.JSONObject
 
 class GeneratedActivity : Activity() {
+    private var filePathCallback: ValueCallback<Array<android.net.Uri>>? = null
+    private val fileChooserRequestCode = 7301
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val config = assets.open("webworkshop.json").bufferedReader().use { JSONObject(it.readText()) }
@@ -22,8 +27,60 @@ class GeneratedActivity : Activity() {
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.settings.allowFileAccess = true
-        web.settings.allowContentAccess = false
-        web.webChromeClient = WebChromeClient()
+        web.settings.allowContentAccess = true
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<android.net.Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                this@GeneratedActivity.filePathCallback?.onReceiveValue(null)
+                this@GeneratedActivity.filePathCallback = filePathCallback ?: return false
+
+                try {
+                    val accepted = fileChooserParams?.acceptTypes
+                        ?.flatMap { it.split(",") }
+                        ?.map { it.trim().lowercase() }
+                        ?.mapNotNull { type ->
+                            when {
+                                type.startsWith(".") -> when (type) {
+                                    ".jpg", ".jpeg" -> "image/jpeg"
+                                    ".png" -> "image/png"
+                                    ".gif" -> "image/gif"
+                                    ".webp" -> "image/webp"
+                                    ".pdf" -> "application/pdf"
+                                    ".txt" -> "text/plain"
+                                    ".mp4" -> "video/mp4"
+                                    else -> null
+                                }
+                                type.contains("/") -> type
+                                else -> null
+                            }
+                        }
+                        ?.distinct()
+                        .orEmpty()
+
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, fileChooserParams?.mode == FileChooserParams.MODE_OPEN_MULTIPLE)
+                        if (accepted.isEmpty()) {
+                            type = "*/*"
+                        } else if (accepted.size == 1) {
+                            type = accepted.first()
+                        } else {
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_MIME_TYPES, accepted.toTypedArray())
+                        }
+                    }
+                    startActivityForResult(intent, fileChooserRequestCode)
+                    return true
+                } catch (error: Exception) {
+                    this@GeneratedActivity.filePathCallback?.onReceiveValue(null)
+                    this@GeneratedActivity.filePathCallback = null
+                    return false
+                }
+            }
+        }
         web.webViewClient = WebViewClient()
         container.addView(web, FrameLayout.LayoutParams(-1, -1))
         val splashId = resources.getIdentifier("splash", "drawable", packageName)
@@ -55,6 +112,30 @@ class GeneratedActivity : Activity() {
         } else {
             web.loadUrl("file:///android_asset/site/" + config.optString("entry", "index.html"))
         }
+    }
+
+    @Deprecated("Deprecated in Android")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != fileChooserRequestCode) return
+
+        val callback = filePathCallback ?: return
+        filePathCallback = null
+        val results = if (resultCode == RESULT_OK && data != null) {
+            val clip = data.clipData
+            when {
+                clip != null -> Array(clip.itemCount) { index -> clip.getItemAt(index).uri }
+                data.data != null -> arrayOf(data.data!!)
+                else -> null
+            }
+        } else null
+        callback.onReceiveValue(results)
+    }
+
+    override fun onDestroy() {
+        filePathCallback?.onReceiveValue(null)
+        filePathCallback = null
+        super.onDestroy()
     }
 
     private var splash: ImageView? = null
