@@ -220,26 +220,47 @@ object ApkGenerator {
     }
 
     private fun replaceImage(context: Context, uri: Uri, oldResource: File, maxWidth: Int, maxHeight: Int) {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: throw IllegalStateException("无法读取所选图片")
-        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "图片格式无法识别，请使用 PNG 或 JPG" }
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxWidth && bounds.outHeight / (sample * 2) >= maxHeight) sample *= 2
-        val options = BitmapFactory.Options().apply { inSampleSize = sample }
-        val decoded = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            ?: throw IllegalStateException("图片解码失败")
-        val ratio = minOf(maxWidth.toFloat() / decoded.width, maxHeight.toFloat() / decoded.height, 1f)
-        val width = (decoded.width * ratio).toInt().coerceAtLeast(1)
-        val height = (decoded.height * ratio).toInt().coerceAtLeast(1)
-        val bitmap = if (width == decoded.width && height == decoded.height) decoded
-            else Bitmap.createScaledBitmap(decoded, width, height, true).also { if (it !== decoded) decoded.recycle() }
-        val target = File(oldResource.parentFile, oldResource.nameWithoutExtension + ".png")
-        FileOutputStream(target).use {
-            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) { "图片转换失败" }
+        // Read the selected image once into a private temporary file. Some document providers
+        // revoke transient URI grants or do not support a second openInputStream call.
+        val source = File(context.cacheDir, "webworkshop-image-${System.nanoTime()}.img")
+        try {
+            val input = when (uri.scheme) {
+                "file" -> File(uri.path ?: "").takeIf { it.isFile }?.inputStream()
+                else -> context.contentResolver.openInputStream(uri)
+            } ?: throw IllegalStateException("无法读取所选图片（URI：${uri.scheme ?: "未知"}）")
+            input.use { stream -> source.outputStream().use { stream.copyTo(it) } }
+            check(source.length() > 0L) { "所选图片文件为空" }
+
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            source.inputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
+            require(bounds.outWidth > 0 && bounds.outHeight > 0) {
+                "图片格式无法识别，请使用 PNG、JPG 或 WebP"
+            }
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= maxWidth &&
+                bounds.outHeight / (sample * 2) >= maxHeight) sample *= 2
+            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            val decoded = source.inputStream().use { BitmapFactory.decodeStream(it, null, options) }
+                ?: throw IllegalStateException("图片解码失败")
+            val ratio = minOf(maxWidth.toFloat() / decoded.width, maxHeight.toFloat() / decoded.height, 1f)
+            val width = (decoded.width * ratio).toInt().coerceAtLeast(1)
+            val height = (decoded.height * ratio).toInt().coerceAtLeast(1)
+            val bitmap = if (width == decoded.width && height == decoded.height) decoded
+                else Bitmap.createScaledBitmap(decoded, width, height, true).also {
+                    if (it !== decoded) decoded.recycle()
+                }
+            try {
+                val target = File(oldResource.parentFile, oldResource.nameWithoutExtension + ".png")
+                FileOutputStream(target).use {
+                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) { "图片转换失败" }
+                }
+                oldResource.delete()
+            } finally {
+                bitmap.recycle()
+            }
+        } finally {
+            source.delete()
         }
-        oldResource.delete()
-        bitmap.recycle()
     }
 
     private fun copyTree(source: File, destination: File) {
