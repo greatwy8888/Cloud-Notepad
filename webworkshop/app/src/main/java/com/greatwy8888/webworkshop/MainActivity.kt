@@ -192,11 +192,19 @@ class MainActivity : androidx.activity.ComponentActivity() {
         if (uri != null) {
             val remove = TextView(this).apply {
                 text = "×"
-                textSize = 26f
+                textSize = 20f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
                 gravity = android.view.Gravity.CENTER
                 setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(218, 82, 82))
-                elevation = dp(4).toFloat()
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(Color.rgb(218, 82, 82))
+                    setStroke(dp(1), Color.WHITE)
+                }
+                elevation = dp(3).toFloat()
+                contentDescription = "删除已选图片"
+                isClickable = true
+                isFocusable = true
                 setOnClickListener {
                     if (kind == "icon") {
                         iconUri = null
@@ -209,9 +217,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     Toast.makeText(this@MainActivity, "图片已删除", Toast.LENGTH_SHORT).show()
                 }
             }
-            frame.addView(remove, android.widget.FrameLayout.LayoutParams(dp(38), dp(38),
+            frame.addView(remove, android.widget.FrameLayout.LayoutParams(dp(28), dp(28),
                 android.view.Gravity.TOP or android.view.Gravity.END).apply {
-                setMargins(0, dp(5), dp(5), 0)
+                setMargins(0, dp(7), dp(7), 0)
             })
         }
         panel.addView(frame, LinearLayout.LayoutParams(-1, previewHeight))
@@ -409,11 +417,32 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 val detail = generateSequence(e as Throwable?) { it.cause }
                     .mapNotNull { it.localizedMessage?.takeIf(String::isNotBlank) ?: it.javaClass.simpleName }
                     .distinct().joinToString("\n")
+                val fullError = buildString {
+                    append("网页工坊 APK 生成失败\\n")
+                    append("时间：").append(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())).append("\\n")
+                    append("模式：").append(request.mode).append("\\n")
+                    append("应用名称：").append(request.appName).append("\\n\\n")
+                    append(detail)
+                    append("\\n\\n完整堆栈：\\n")
+                    var current: Throwable? = e
+                    while (current != null) {
+                        append(current.javaClass.name).append(": ").append(current.localizedMessage).append("\\n")
+                        current.stackTrace.take(35).forEach { append("  at ").append(it.toString()).append("\\n") }
+                        current = current.cause
+                        if (current != null) append("Caused by: ")
+                    }
+                }
+                runCatching { File(filesDir, "last_generation_error.txt").writeText(fullError) }
                 Handler(Looper.getMainLooper()).post {
-                    status.text = "生成失败，请查看错误详情"
+                    status.text = "生成失败：错误详情已保存，可点击复制后发给开发者"
                     AlertDialog.Builder(this)
                         .setTitle("APK 生成失败")
                         .setMessage(detail.take(1800))
+                        .setNeutralButton("复制完整错误") { _, _ ->
+                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("网页工坊生成错误", fullError))
+                            Toast.makeText(this, "完整错误已复制，请粘贴发送", Toast.LENGTH_LONG).show()
+                        }
                         .setPositiveButton("知道了", null)
                         .show()
                 }
