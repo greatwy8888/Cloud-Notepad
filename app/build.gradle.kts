@@ -10,8 +10,8 @@ android {
         applicationId = "com.kingyi.editor"
         minSdk = 23
         targetSdk = 28
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
     }
     signingConfigs {
         create("release") {
@@ -43,6 +43,17 @@ val restoreOfflineEditorHtml by tasks.registering {
         GZIPInputStream(compressed.inputStream()).use { input ->
             destination.outputStream().use { output -> input.copyTo(output) }
         }
+        // Final UI polish: center the unlock action and remove any legacy
+        // button explicitly labeled as rich-text/Markdown conversion.
+        val html = destination.readText()
+        val centered = html.replace(
+            ".login button{",
+            ".login button{text-align:center;display:flex;align-items:center;justify-content:center;"
+        ).replace(
+            "window.handleAndroidBack=",
+            "document.querySelectorAll('button').forEach(b=>{if(/富文本/.test((b.textContent||'').trim()))b.remove()});\nwindow.handleAndroidBack="
+        )
+        destination.writeText(centered)
     }
 }
 tasks.named("preBuild").configure { dependsOn(restoreOfflineEditorHtml) }
