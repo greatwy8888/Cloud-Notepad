@@ -2,6 +2,8 @@
     <application
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:label="King Yi 编辑器"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:hardwareAccelerated="true">
