@@ -73,6 +73,8 @@ jobs:
           export WEBWORKSHOP_RELEASE_KEYSTORE_FILE="$RUNNER_TEMP/webworkshop-release.jks"
           keytool -list -keystore "$WEBWORKSHOP_RELEASE_KEYSTORE_FILE" -storepass "$WEBWORKSHOP_RELEASE_STORE_PASSWORD" -alias "$WEBWORKSHOP_RELEASE_KEY_ALIAS" >/dev/null
           gradle --no-daemon --console=plain :template:assembleDebug :app:assembleRelease --stacktrace
+          echo "Checking bundled generated app template..."
+          unzip -Z1 app/build/outputs/apk/release/app-release.apk | grep -Fx "assets/generated-template.apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/webworkshop.apk"
           echo "## Signed release APK" >> "$GITHUB_STEP_SUMMARY"
