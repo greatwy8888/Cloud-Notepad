@@ -47,13 +47,13 @@ val restoreOfflineEditorHtml by tasks.registering {
         var html = destination.readText()
         // Remove the legacy rich-text mode toggle by its stable element id.
         html = html.replace(
-            Regex("""<button\\b(?=[^>]*\\bid=["']modeRich["'])[^>]*>.*?</button>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)),
+            Regex("""<button\b(?=[^>]*\bid=["']modeRich["'])[^>]*>.*?</button>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)),
             ""
         )
         // Center both the first-run setup and later unlock button labels.
         html = html.replace(
             "</style>",
-            "#authOverlay #authSubmit{display:flex!important;align-items:center;justify-content:center;text-align:center;}\\n</style>"
+            "#authOverlay #authSubmit{display:flex!important;align-items:center;justify-content:center;text-align:center;}\n</style>"
         )
         // Close nested layers, then lock the editor, then let Android exit.
         val oldBack = "window.handleAndroidBack = function(){ if(previewOverlay.classList.contains('active')){closeImagePreview();return true;} if(document.getElementById('confirmOverlay').classList.contains('active')){hideConfirm();return true;} showConfirm('确定要离开吗？\\n\\n未保存的内容将丢失！',function(){lockApp();}); return true; };"
