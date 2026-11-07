@@ -57,7 +57,7 @@ val restoreOfflineEditorHtml by tasks.registering {
         )
         // Decode selected local files by BOM/UTF-8 first, then GB18030 (common Chinese Windows encoding).
         html = html.replace(
-            "$('open').onclick=",
+            "\$('open').onclick=",
             """function decodeLocalFile(buffer){
                 const bytes=new Uint8Array(buffer);
                 if(bytes.length>=3&&bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF)return new TextDecoder('utf-8').decode(bytes.subarray(3));
@@ -66,7 +66,17 @@ val restoreOfflineEditorHtml by tasks.registering {
                 try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes)}
                 catch(e){try{return new TextDecoder('gb18030').decode(bytes)}catch(e2){return new TextDecoder('utf-8').decode(bytes)}}
             }
-            $('open').onclick="""
+            ${'"""
+        )
+        html = html.replace("r.onload=()=>{if(f.name", "r.onload=()=>{let fileText=decodeLocalFile(r.result);if(f.name")
+        html = html.replace("pre.textContent=r.result;", "pre.textContent=fileText;")
+        html = html.replace("$('editor').innerHTML=r.result;", "$('editor').innerHTML=fileText;")
+        html = html.replace("r.readAsText(f);", "r.readAsArrayBuffer(f);")
+        destination.writeText(html)
+    }
+}
+tasks.named("preBuild").configure { dependsOn(restoreOfflineEditorHtml) }
+}('open').onclick="""
         )
         html = html.replace("r.onload=()=>{if(f.name", "r.onload=()=>{let fileText=decodeLocalFile(r.result);if(f.name")
         html = html.replace("pre.textContent=r.result;", "pre.textContent=fileText;")
