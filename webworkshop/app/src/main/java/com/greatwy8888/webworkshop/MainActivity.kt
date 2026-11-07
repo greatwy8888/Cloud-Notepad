@@ -171,17 +171,31 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        iconUri = prefs.getString("icon_uri", null)?.let(Uri::parse)
-        splashUri = prefs.getString("splash_uri", null)?.let(Uri::parse)
-        prefs.getString("local_html_path", null)?.let { path ->
-            val file = File(path)
-            if (file.exists()) {
-                localHtml = file.readText()
-                localHtmlBaseUrl = prefs.getString("local_html_base", "file://${filesDir.absolutePath}/")
-                mode = "html"
-            }
-        }
+        // A fresh launch starts with a clean form. Keep build history, generated
+        // APKs, per-project signing keys, package mappings and version counters.
+        resetTransientOptions()
         showHome()
+    }
+
+    private fun resetTransientOptions() {
+        // Clear only the current form selection, not durable project identity/signing data.
+        prefs.edit()
+            .remove("icon_uri")
+            .remove("splash_uri")
+            .remove("last_url")
+            .remove("app_name")
+            .remove("local_html_path")
+            .remove("local_html_base")
+            .remove("local_project_identity")
+            .apply()
+        iconUri = null
+        splashUri = null
+        localHtml = null
+        localHtmlBaseUrl = null
+        mode = "url"
+        File(filesDir, "custom_images").deleteRecursively()
+        File(filesDir, "imported_page.html").delete()
+        File(filesDir, "site_project").deleteRecursively()
     }
 
     private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int, kind: String): LinearLayout {
@@ -470,19 +484,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     gravity = android.view.Gravity.CENTER_VERTICAL
                 }
                 row.addView(summary, LinearLayout.LayoutParams(0, dp(42), 1f))
-                val download = TextView(this).apply {
-                    text = "下载"
-                    textSize = 13f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    gravity = android.view.Gravity.CENTER
-                    setTextColor(Color.rgb(43, 83, 122))
-                    setPadding(dp(12), dp(8), dp(12), dp(8))
-                    background = roundedBackground(Color.WHITE, Color.rgb(220, 225, 230))
-                    setOnClickListener { downloadHistoryApk(apk) }
-                }
-                row.addView(download, LinearLayout.LayoutParams(-2, dp(38)).apply {
-                    marginStart = dp(8)
-                })
                 row.setOnClickListener { showHistoryItemActions(item, index, items) }
                 content.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
                     topMargin = dp(5); bottomMargin = dp(5)
