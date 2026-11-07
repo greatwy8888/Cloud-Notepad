@@ -36,7 +36,7 @@ class GeneratedActivity : Activity() {
         if (splashId != 0) {
             splash = ImageView(this).apply {
                 setImageResource(splashId)
-                scaleType = ImageView.ScaleType.CENTER_CROP
+                scaleType = ImageView.ScaleType.FIT_CENTER
                 setBackgroundColor(0xFFFFFFFF.toInt())
             }
             container.addView(splash, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
