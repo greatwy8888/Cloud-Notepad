@@ -416,9 +416,13 @@ class MainActivity : androidx.activity.ComponentActivity() {
         form.addView(address, LinearLayout.LayoutParams(-1, dp(52)))
         form.addView(button("选择本地 HTML 文件") {
             htmlPicker.launch(arrayOf("text/html", "application/xhtml+xml"))
+        }, LinearLayout.LayoutParams(-1, dp(48)).apply {
+            topMargin = dp(8); bottomMargin = dp(7)
         })
         form.addView(button("导入完整网页文件夹（含 CSS、JS、图片）") {
             siteFolderPicker.launch(null)
+        }, LinearLayout.LayoutParams(-1, dp(48)).apply {
+            topMargin = dp(7); bottomMargin = dp(10)
         })
 
         form.addView(label("应用名称"))
@@ -491,39 +495,102 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private fun showHistoryDialog() {
         val items = try { org.json.JSONArray(prefs.getString("build_history", "[]")) }
             catch (_: Exception) { org.json.JSONArray() }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(8), dp(18), dp(8))
+        }
         if (items.length() == 0) {
-            AlertDialog.Builder(this).setTitle("历史制作")
-                .setMessage("暂时没有制作记录。成功生成 APK 后，会自动保存在这里。")
-                .setPositiveButton("知道了", null).show()
+            content.addView(TextView(this).apply {
+                text = "暂时没有制作记录。成功生成 APK 后，会自动保存在这里。"
+                textSize = 14f
+                setTextColor(Color.rgb(105, 115, 125))
+                setPadding(dp(8), dp(18), dp(8), dp(18))
+            })
+        } else {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val apk = File(item.optString("path"))
+                val date = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date(item.optLong("created")))
+                val title = item.optString("name", "未命名")
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(12), dp(7), dp(8), dp(7))
+                    background = roundedBackground(Color.rgb(242, 243, 245))
+                    isClickable = true
+                    isFocusable = true
+                }
+                val summary = TextView(this).apply {
+                    text = "$title  ·  $date"
+                    textSize = 14f
+                    setTextColor(Color.rgb(45, 50, 56))
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                }
+                row.addView(summary, LinearLayout.LayoutParams(0, dp(42), 1f))
+                val download = TextView(this).apply {
+                    text = "下载"
+                    textSize = 13f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    gravity = android.view.Gravity.CENTER
+                    setTextColor(Color.rgb(43, 83, 122))
+                    setPadding(dp(12), dp(8), dp(12), dp(8))
+                    background = roundedBackground(Color.WHITE, Color.rgb(220, 225, 230))
+                    setOnClickListener { downloadHistoryApk(apk) }
+                }
+                row.addView(download, LinearLayout.LayoutParams(-2, dp(38)).apply {
+                    marginStart = dp(8)
+                })
+                row.setOnClickListener { showHistoryItemActions(item, index, items) }
+                content.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = dp(5); bottomMargin = dp(5)
+                })
+            }
+        }
+        val scroll = ScrollView(this).apply {
+            addView(content)
+            isFillViewport = true
+        }
+        AlertDialog.Builder(this)
+            .setTitle("制作历史（${items.length()}）")
+            .setView(scroll)
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun downloadHistoryApk(apk: File) {
+        if (!apk.isFile) {
+            Toast.makeText(this, "APK 文件已不存在，请重新生成", Toast.LENGTH_LONG).show()
             return
         }
-        val labels = Array(items.length()) { index ->
-            val item = items.optJSONObject(index) ?: org.json.JSONObject()
-            val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
-                .format(java.util.Date(item.optLong("created")))
-            val type = if (item.optString("mode") == "url") "网址" else "本地 HTML"
-            "$date  ·  ${item.optString("name", "未命名")}\n$type  ·  ${item.optString("package")}"
-        }
-        AlertDialog.Builder(this).setTitle("历史制作（${items.length()}）")
-            .setItems(labels) { _, which ->
-                val item = items.optJSONObject(which) ?: return@setItems
-                val apk = File(item.optString("path"))
-                AlertDialog.Builder(this)
-                    .setTitle(item.optString("name", "历史 APK"))
-                    .setMessage("包名：${item.optString("package")}\n来源：${item.optString("source")}\n文件：${apk.name}")
-                    .setPositiveButton("安装 APK") { _, _ ->
-                        if (apk.isFile) installGeneratedApk(apk)
-                        else Toast.makeText(this, "APK 文件已不存在，请重新生成", Toast.LENGTH_LONG).show()
-                    }
-                    .setNeutralButton("删除记录") { _, _ ->
-                        val next = org.json.JSONArray()
-                        for (i in 0 until items.length()) if (i != which) next.put(items.optJSONObject(i))
-                        prefs.edit().putString("build_history", next.toString()).apply()
-                        Toast.makeText(this, "历史记录已删除", Toast.LENGTH_SHORT).show()
-                    }
-                    .setNegativeButton("返回") { _, _ -> showHistoryDialog() }
-                    .show()
-            }.setNegativeButton("关闭", null).show()
+        generatedApk = apk
+        apkSavePicker.launch(apk.name)
+    }
+
+    private fun showHistoryItemActions(
+        item: org.json.JSONObject,
+        index: Int,
+        items: org.json.JSONArray
+    ) {
+        val apk = File(item.optString("path"))
+        AlertDialog.Builder(this)
+            .setTitle(item.optString("name", "历史 APK"))
+            .setMessage("包名：${item.optString("package")}\n来源：${item.optString("source")}\n文件：${apk.name}")
+            .setPositiveButton("安装 APK") { _, _ ->
+                if (apk.isFile) installGeneratedApk(apk)
+                else Toast.makeText(this, "APK 文件已不存在，请重新生成", Toast.LENGTH_LONG).show()
+            }
+            .setNeutralButton("下载 APK") { _, _ -> downloadHistoryApk(apk) }
+            .setNegativeButton("删除记录") { _, _ ->
+                val next = org.json.JSONArray()
+                for (i in 0 until items.length()) if (i != index) next.put(items.optJSONObject(i))
+                prefs.edit().putString("build_history", next.toString()).apply()
+                Toast.makeText(this, "历史记录已删除", Toast.LENGTH_SHORT).show()
+                showHistoryDialog()
+            }
+            .show()
     }
 
     private fun currentProjectPackage(): String {
