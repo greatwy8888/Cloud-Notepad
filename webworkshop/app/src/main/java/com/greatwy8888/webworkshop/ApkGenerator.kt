@@ -139,8 +139,8 @@ object ApkGenerator {
         }
         File(assets, "webworkshop.json").writeText(json.toString(), Charsets.UTF_8)
 
-        request.iconUri?.let { replaceImage(context, it, File(decoded, "res/drawable/ic_webworkshop.xml")) }
-        request.splashUri?.let { replaceImage(context, it, File(decoded, "res/drawable/splash.xml")) }
+        request.iconUri?.let { replaceImage(context, it, File(decoded, "res/drawable/ic_webworkshop.xml"), 512, 512) }
+        request.splashUri?.let { replaceImage(context, it, File(decoded, "res/drawable/splash.xml"), 1080, 1920) }
 
         val unsigned = File(work, "unsigned.apk")
         ApkBuilder(decoded, config).build(unsigned)
@@ -166,11 +166,25 @@ object ApkGenerator {
             .sign()
     }
 
-    private fun replaceImage(context: Context, uri: Uri, oldResource: File) {
-        val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+    private fun replaceImage(context: Context, uri: Uri, oldResource: File, maxWidth: Int, maxHeight: Int) {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
             ?: throw IllegalStateException("无法读取所选图片")
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "图片格式无法识别，请使用 PNG 或 JPG" }
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= maxWidth && bounds.outHeight / (sample * 2) >= maxHeight) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        val decoded = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+            ?: throw IllegalStateException("图片解码失败")
+        val ratio = minOf(maxWidth.toFloat() / decoded.width, maxHeight.toFloat() / decoded.height, 1f)
+        val width = (decoded.width * ratio).toInt().coerceAtLeast(1)
+        val height = (decoded.height * ratio).toInt().coerceAtLeast(1)
+        val bitmap = if (width == decoded.width && height == decoded.height) decoded
+            else Bitmap.createScaledBitmap(decoded, width, height, true).also { if (it !== decoded) decoded.recycle() }
         val target = File(oldResource.parentFile, oldResource.nameWithoutExtension + ".png")
-        FileOutputStream(target).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        FileOutputStream(target).use {
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) { "图片转换失败" }
+        }
         oldResource.delete()
         bitmap.recycle()
     }
