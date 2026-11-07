@@ -13,8 +13,8 @@ android {
         applicationId = "com.kingyi.editor"
         minSdk = 23
         targetSdk = 28
-        versionCode = 6
-        versionName = "1.1.4"
+        versionCode = 7
+        versionName = "1.1.5"
     }
     signingConfigs {
         create("release") {
@@ -70,7 +70,7 @@ function decodeLocalFile(buffer){
 }
 """.trimIndent()
         if (!html.contains("function decodeLocalFile(buffer)")) {
-            html = html.replaceFirst("function openLocalFile", decoder + "\\nfunction openLocalFile")
+            html = html.replaceFirst("function openLocalFile", decoder + "\nfunction openLocalFile")
         }
         html = html.replace("txt=String(ev.target.result||'')", "txt=decodeLocalFile(ev.target.result)")
         html = html.replace("reader.readAsText(file,'UTF-8')", "reader.readAsArrayBuffer(file)")
