@@ -3,6 +3,7 @@ package com.greatwy8888.webworkshop
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -140,7 +141,7 @@ object ApkGenerator {
 
             stage = "写入网页内容"
             val assets = File(decoded, "assets").apply { mkdirs() }
-            val json = org.json.JSONObject().put("mode", request.mode)
+            val json = org.json.JSONObject().put("mode", request.mode).put("hasSplash", request.splashUri != null)
             if (request.mode == "url") {
                 json.put("url", request.url.trim())
             } else {
