@@ -10,6 +10,7 @@ import brut.androlib.ApkBuilder
 import brut.androlib.ApkDecoder
 import brut.androlib.android.ApktoolAndroid
 import com.android.apksig.ApkSigner
+import com.android.apksig.ApkVerifier
 import org.w3c.dom.Element
 import java.io.File
 import java.io.FileOutputStream
@@ -78,76 +79,128 @@ object ApkGenerator {
     }
 
     fun build(context: Context, request: Request): File {
-        require(request.appName.isNotBlank()) { "请填写应用名称" }
-        if (request.mode == "url") {
-            require(request.url.startsWith("https://") || request.url.startsWith("http://")) { "请输入完整网址（http:// 或 https://）" }
-        } else {
-            require(!request.localPath.isNullOrBlank() && File(request.localPath).exists()) { "请先选择本地 HTML 或导入网页文件夹" }
-        }
-
-        val prefs = context.getSharedPreferences("webworkshop", Context.MODE_PRIVATE)
-        val packageName = resolvePackageName(context, request)
-        val versionKey = "version_" + packageName.substringAfterLast('.').take(12)
-        // Epoch seconds provide a monotonic baseline even after restoring a project key on a new phone.
-        // The local counter still guarantees distinct builds made within the same second.
-        val versionCode = maxOf(prefs.getInt(versionKey, 0) + 1, (System.currentTimeMillis() / 1000L).toInt())
-        prefs.edit().putInt(versionKey, versionCode).apply()
-
-        val work = File(context.cacheDir, "apk_generation").apply { deleteRecursively(); mkdirs() }
-        val template = File(work, "template.apk")
-        context.assets.open("generated-template.apk").use { input -> template.outputStream().use { input.copyTo(it) } }
-
-        val config = ApktoolAndroid.configure(context)
-        config.isForced = true
-        val decoded = File(work, "decoded").apply { mkdirs() }
-        ApkDecoder(template, config).decode(decoded)
-
-        val manifest = File(decoded, "AndroidManifest.xml")
-        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
-        val document = factory.newDocumentBuilder().parse(manifest)
-        val root = document.documentElement
-        root.setAttribute("package", packageName)
-        root.setAttributeNS(ANDROID_NS, "android:versionCode", versionCode.toString())
-        root.setAttributeNS(ANDROID_NS, "android:versionName", "1.0." + (versionCode - 1))
-        val app = root.getElementsByTagName("application").item(0) as Element
-        app.setAttributeNS(ANDROID_NS, "android:label", request.appName.trim())
-        app.setAttributeNS(ANDROID_NS, "android:allowBackup", "false")
-        TransformerFactory.newInstance().newTransformer().apply {
-            setOutputProperty(OutputKeys.ENCODING, "UTF-8")
-            setOutputProperty(OutputKeys.INDENT, "yes")
-        }.transform(DOMSource(document), StreamResult(manifest))
-
-        val assets = File(decoded, "assets").apply { mkdirs() }
-        val json = org.json.JSONObject().put("mode", request.mode)
-        if (request.mode == "url") {
-            json.put("url", request.url)
-        } else {
-            val source = File(request.localPath!!)
-            val site = File(assets, "site").apply { deleteRecursively(); mkdirs() }
-            val base = request.localBase.orEmpty()
-            if (base.contains("site_project")) {
-                val rootDir = File(context.filesDir, "site_project")
-                require(rootDir.exists()) { "本地网页目录已不存在，请重新导入" }
-                copyTree(rootDir, site)
-                val entry = listOf("index.html", "index.htm", "main.html").firstOrNull { File(site, it).exists() }
-                    ?: throw IllegalStateException("找不到网页入口文件")
-                json.put("entry", entry)
+        var stage = "检查输入"
+        try {
+            require(request.appName.isNotBlank()) { "请填写应用名称" }
+            if (request.mode == "url") {
+                require(request.url.startsWith("https://") || request.url.startsWith("http://")) {
+                    "请输入完整网址（http:// 或 https://）"
+                }
             } else {
-                source.copyTo(File(site, "index.html"), overwrite = true)
-                json.put("entry", "index.html")
+                require(!request.localPath.isNullOrBlank() && File(request.localPath).exists()) {
+                    "请先选择本地 HTML 或导入网页文件夹"
+                }
             }
+            require(request.projectIdentity.isNotBlank()) { "项目身份信息缺失，请重新选择网页来源" }
+
+            val prefs = context.getSharedPreferences("webworkshop", Context.MODE_PRIVATE)
+            val packageName = resolvePackageName(context, request)
+            val versionKey = "version_" + packageName.substringAfterLast('.').take(12)
+            val versionCode = maxOf(
+                prefs.getInt(versionKey, 0) + 1,
+                (System.currentTimeMillis() / 1000L).toInt()
+            )
+
+            stage = "准备模板 APK"
+            val work = File(context.cacheDir, "apk_generation").apply {
+                deleteRecursively()
+                check(mkdirs() || exists()) { "无法创建临时工作目录：$absolutePath" }
+            }
+            val template = File(work, "template.apk")
+            context.assets.open("generated-template.apk").use { input ->
+                template.outputStream().use { output -> input.copyTo(output) }
+            }
+            check(template.exists() && template.length() > 0L) { "内置模板 APK 为空或不存在" }
+
+            stage = "初始化 APK 解包引擎"
+            val config = ApktoolAndroid.configure(context)
+            config.isForced = true
+
+            stage = "解包模板 APK"
+            val decoded = File(work, "decoded")
+            ApkDecoder(template, config).decode(decoded)
+            check(File(decoded, "AndroidManifest.xml").exists()) { "模板解包后没有 AndroidManifest.xml" }
+
+            stage = "修改应用清单"
+            val manifest = File(decoded, "AndroidManifest.xml")
+            val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            val document = factory.newDocumentBuilder().parse(manifest)
+            val root = document.documentElement
+            root.setAttribute("package", packageName)
+            root.setAttributeNS(ANDROID_NS, "android:versionCode", versionCode.toString())
+            root.setAttributeNS(ANDROID_NS, "android:versionName", "1.0." + (versionCode - 1))
+            val app = root.getElementsByTagName("application").item(0) as? Element
+                ?: throw IllegalStateException("模板清单中找不到 application 节点")
+            app.setAttributeNS(ANDROID_NS, "android:label", request.appName.trim())
+            app.setAttributeNS(ANDROID_NS, "android:allowBackup", "false")
+            TransformerFactory.newInstance().newTransformer().apply {
+                setOutputProperty(OutputKeys.ENCODING, "UTF-8")
+                setOutputProperty(OutputKeys.INDENT, "yes")
+            }.transform(DOMSource(document), StreamResult(manifest))
+
+            stage = "写入网页内容"
+            val assets = File(decoded, "assets").apply { mkdirs() }
+            val json = org.json.JSONObject().put("mode", request.mode)
+            if (request.mode == "url") {
+                json.put("url", request.url.trim())
+            } else {
+                val source = File(request.localPath!!)
+                val site = File(assets, "site").apply {
+                    deleteRecursively()
+                    mkdirs()
+                }
+                val base = request.localBase.orEmpty()
+                if (base.contains("site_project")) {
+                    val rootDir = File(context.filesDir, "site_project")
+                    require(rootDir.exists()) { "本地网页目录已不存在，请重新导入" }
+                    copyTree(rootDir, site)
+                    val entry = listOf("index.html", "index.htm", "main.html")
+                        .firstOrNull { File(site, it).exists() }
+                        ?: throw IllegalStateException("找不到网页入口文件")
+                    json.put("entry", entry)
+                } else {
+                    require(source.isFile) { "选择的 HTML 文件不存在或不是文件" }
+                    source.copyTo(File(site, "index.html"), overwrite = true)
+                    json.put("entry", "index.html")
+                }
+            }
+            File(assets, "webworkshop.json").writeText(json.toString(), Charsets.UTF_8)
+
+            stage = "处理自定义图片"
+            request.iconUri?.let {
+                replaceImage(context, it, File(decoded, "res/drawable/ic_webworkshop.xml"), 512, 512)
+            }
+            request.splashUri?.let {
+                replaceImage(context, it, File(decoded, "res/drawable/splash.xml"), 1080, 1920)
+            }
+
+            stage = "重新打包 APK"
+            val unsigned = File(work, "unsigned.apk")
+            ApkBuilder(decoded, config).build(unsigned)
+            check(unsigned.exists() && unsigned.length() > 0L) { "APK 解包引擎未生成有效文件" }
+
+            stage = "生成项目签名"
+            val signed = File(
+                context.filesDir,
+                "exports/" + safeName(request.appName) + "_" + packageName.substringAfterLast('.') + ".apk"
+            )
+            signed.parentFile?.let { check(it.mkdirs() || it.exists()) { "无法创建 APK 导出目录" } }
+
+            stage = "签名 APK"
+            sign(context, packageName, unsigned, signed)
+            check(signed.exists() && signed.length() > 0L) { "签名后 APK 文件不存在或为空" }
+
+            stage = "校验 APK 签名"
+            val verification = ApkVerifier.Builder(signed).build().verify()
+            check(verification.isVerified) {
+                "APK 签名校验失败：" + verification.errors.joinToString("; ")
+            }
+            prefs.edit().putInt(versionKey, versionCode).apply()
+            return signed
+        } catch (e: Exception) {
+            val detail = e.localizedMessage?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName
+            throw IllegalStateException("[$stage] $detail", e)
         }
-        File(assets, "webworkshop.json").writeText(json.toString(), Charsets.UTF_8)
-
-        request.iconUri?.let { replaceImage(context, it, File(decoded, "res/drawable/ic_webworkshop.xml"), 512, 512) }
-        request.splashUri?.let { replaceImage(context, it, File(decoded, "res/drawable/splash.xml"), 1080, 1920) }
-
-        val unsigned = File(work, "unsigned.apk")
-        ApkBuilder(decoded, config).build(unsigned)
-        val signed = File(context.filesDir, "exports/" + safeName(request.appName) + "_" + packageName.substringAfterLast('.') + ".apk")
-        signed.parentFile?.mkdirs()
-        sign(context, packageName, unsigned, signed)
-        return signed
     }
 
     private fun sign(context: Context, packageName: String, input: File, output: File) {
