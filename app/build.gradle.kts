@@ -13,8 +13,8 @@ android {
         applicationId = "com.kingyi.editor"
         minSdk = 23
         targetSdk = 28
-        versionCode = 7
-        versionName = "1.1.5"
+        versionCode = 8
+        versionName = "1.1.6"
     }
     signingConfigs {
         create("release") {
@@ -44,14 +44,26 @@ val restoreOfflineEditorHtml by tasks.registering {
     doLast {
         val compressed = layout.projectDirectory.file("src/main/offline/index.html.gz").asFile
         val destination = layout.projectDirectory.file("src/main/assets/index.html").asFile
-        GZIPInputStream(compressed.inputStream()).use { input ->
-            destination.parentFile.mkdirs()
-            destination.outputStream().use { output -> input.copyTo(output) }
+        val rawHtml = GZIPInputStream(compressed.inputStream()).use { it.readBytes() }
+        destination.parentFile.mkdirs()
+
+        // Decode legacy Chinese source safely before writing UTF-8.
+        fun decodeHtml(bytes: ByteArray): String {
+            val candidates = listOf("UTF-8", "Big5", "GB18030")
+            for (charsetName in candidates) {
+                try {
+                    val decoder = java.nio.charset.Charset.forName(charsetName).newDecoder()
+                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    return decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+                } catch (_: Exception) { }
+            }
+            return String(bytes, Charsets.UTF_8)
         }
-        var html = destination.readText(Charsets.UTF_8)
+        var html = decodeHtml(rawHtml)
         html = html.replace(
             "</style>",
-            "#auth #authBtn{display:flex!important;align-items:center;justify-content:center;text-align:center;}\n</style>"
+            "#auth button,#login button,.login button,.auth button,#authBtn,#unlockBtn{display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;margin-left:auto!important;margin-right:auto!important;}\n</style>"
         )
 
         // Remove the obsolete rich-text mode control and Markdown conversion controls.
