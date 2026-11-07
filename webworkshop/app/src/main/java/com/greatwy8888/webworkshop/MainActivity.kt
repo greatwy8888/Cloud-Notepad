@@ -76,18 +76,43 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private val imagePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             try {
-                contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (_: Exception) { }
-            if (pendingImage == "icon") {
-                iconUri = uri
-                prefs.edit().putString("icon_uri", uri.toString()).apply()
-                showHome()
-                status.text = "应用图标已选择，已更新预览"
-            } else {
-                splashUri = uri
-                prefs.edit().putString("splash_uri", uri.toString()).apply()
-                showHome()
-                status.text = "启动画面已选择，已更新预览"
+                // Copy immediately into app-private storage. Do not depend on a document
+                // provider's persistable URI permission remaining valid until APK generation.
+                val folder = File(filesDir, "custom_images").apply {
+                    check(mkdirs() || exists()) { "无法创建自定义图片目录" }
+                }
+                val name = if (pendingImage == "icon") "app_icon" else "app_splash"
+                val mime = contentResolver.getType(uri).orEmpty()
+                val extension = when (mime.lowercase()) {
+                    "image/png" -> "png"
+                    "image/webp" -> "webp"
+                    "image/jpeg", "image/jpg" -> "jpg"
+                    else -> when (uri.lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()) {
+                        "png" -> "png"
+                        "webp" -> "webp"
+                        "jpg", "jpeg" -> "jpg"
+                        else -> "img"
+                    }
+                }
+                val saved = File(folder, "$name.$extension")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    saved.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("系统无法读取所选图片")
+                check(saved.length() > 0L) { "所选图片为空" }
+                val savedUri = Uri.fromFile(saved)
+                if (pendingImage == "icon") {
+                    iconUri = savedUri
+                    prefs.edit().putString("icon_uri", savedUri.toString()).apply()
+                    showHome()
+                    status.text = "应用图标已保存到本机，已更新预览"
+                } else {
+                    splashUri = savedUri
+                    prefs.edit().putString("splash_uri", savedUri.toString()).apply()
+                    showHome()
+                    status.text = "启动画面已保存到本机，已更新预览"
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this, "图片导入失败：" + (e.localizedMessage ?: "无法读取图片"), Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -179,7 +204,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
         if (uri != null) {
             try {
-                contentResolver.openInputStream(uri)?.use { input ->
+                (if (uri.scheme == "file") File(uri.path ?: "").takeIf { it.isFile }?.inputStream()
+                    else contentResolver.openInputStream(uri))?.use { input ->
                     image.setImageBitmap(android.graphics.BitmapFactory.decodeStream(input))
                 }
             } catch (_: Exception) { }
