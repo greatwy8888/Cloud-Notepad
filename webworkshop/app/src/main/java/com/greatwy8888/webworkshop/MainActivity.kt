@@ -181,72 +181,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 mode = "html"
             }
         }
-        showSplashThenHome()
-    }
-
-    // Keep the original image ratio. FIT_CENTER fills as much of the screen as possible
-    // and leaves black letterboxing rather than cropping or distorting the image.
-    private fun showSplashThenHome() {
-        val selected = splashUri
-        // No custom splash image: go straight to the home screen without a delay.
-        if (selected == null) {
-            showHome()
-            return
-        }
-
-        val bitmap = try {
-            if (selected.scheme == "file") {
-                android.graphics.BitmapFactory.decodeFile(selected.path)
-            } else {
-                contentResolver.openInputStream(selected)?.use {
-                    android.graphics.BitmapFactory.decodeStream(it)
-                }
-            }
-        } catch (_: Exception) {
-            null
-        }
-
-        // A missing/unreadable image should never hold the user on a blank splash screen.
-        if (bitmap == null) {
-            showHome()
-            return
-        }
-
-        window.setFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN, android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
-        val splash = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
-        val image = object : ImageView(this) {
-            override fun onDraw(canvas: android.graphics.Canvas) {
-                val source = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: return
-                val scale = minOf(width.toFloat() / source.width, height.toFloat() / source.height)
-                val w = source.width * scale
-                val h = source.height * scale
-                val target = android.graphics.RectF((width - w) / 2f, (height - h) / 2f,
-                    (width + w) / 2f, (height + h) / 2f)
-                canvas.drawColor(Color.BLACK)
-                canvas.drawBitmap(source, null, target,
-                    android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
-            }
-        }.apply {
-            setBackgroundColor(Color.BLACK)
-            setImageBitmap(bitmap)
-            scaleType = ImageView.ScaleType.MATRIX
-            contentDescription = "启动画面"
-        }
-        splash.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
-        setContentView(splash)
-        splash.post {
-            Handler(Looper.getMainLooper()).postDelayed({
-                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
-                window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-                showHome()
-            }, 3000L)
-        }
+        showHome()
     }
 
     private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int, kind: String): LinearLayout {
@@ -467,7 +402,12 @@ class MainActivity : androidx.activity.ComponentActivity() {
             setPadding(0, dp(12), 0, 0)
         })
         scroll.addView(form)
-        root.addView(scroll)
+        // Keep the form comfortably centered on tablets and full-width on phones.
+        val screenWidthDp = resources.configuration.screenWidthDp
+        val contentWidth = if (screenWidthDp >= 600) dp(760) else -1
+        root.addView(scroll, LinearLayout.LayoutParams(contentWidth, 0, 1f).apply {
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+        })
         setContentView(root)
     }
 
