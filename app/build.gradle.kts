@@ -16,8 +16,8 @@ android {
         applicationId = "com.kingyi.editor"
         minSdk = 23
         targetSdk = 28
-        versionCode = 8
-        versionName = "1.1.6"
+        versionCode = 9
+        versionName = "1.1.7"
     }
     signingConfigs {
         create("release") {
@@ -66,7 +66,7 @@ val restoreOfflineEditorHtml by tasks.registering {
         var html = decodeHtml(rawHtml)
         html = html.replace(
             "</style>",
-            "#auth button,#login button,.login button,.auth button,#authBtn,#unlockBtn{display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;margin-left:auto!important;margin-right:auto!important;}\n</style>"
+            "#authOverlay button,#authSubmit,#authBtn,#unlockBtn{display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1.2!important;box-sizing:border-box!important;padding-top:12px!important;padding-bottom:12px!important;margin-left:auto!important;margin-right:auto!important;}\n</style>"
         )
 
         // Remove the obsolete rich-text mode control and Markdown conversion controls.
