@@ -418,16 +418,16 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     .mapNotNull { it.localizedMessage?.takeIf(String::isNotBlank) ?: it.javaClass.simpleName }
                     .distinct().joinToString("\n")
                 val fullError = buildString {
-                    append("网页工坊 APK 生成失败\\n")
-                    append("时间：").append(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())).append("\\n")
-                    append("模式：").append(request.mode).append("\\n")
-                    append("应用名称：").append(request.appName).append("\\n\\n")
+                    append("网页工坊 APK 生成失败\n")
+                    append("时间：").append(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())).append("\n")
+                    append("模式：").append(request.mode).append("\n")
+                    append("应用名称：").append(request.appName).append("\n\n")
                     append(detail)
-                    append("\\n\\n完整堆栈：\\n")
+                    append("\n\n完整堆栈：\n")
                     var current: Throwable? = e
                     while (current != null) {
-                        append(current.javaClass.name).append(": ").append(current.localizedMessage).append("\\n")
-                        current.stackTrace.take(35).forEach { append("  at ").append(it.toString()).append("\\n") }
+                        append(current.javaClass.name).append(": ").append(current.localizedMessage).append("\n")
+                        current.stackTrace.take(35).forEach { append("  at ").append(it.toString()).append("\n") }
                         current = current.cause
                         if (current != null) append("Caused by: ")
                     }
