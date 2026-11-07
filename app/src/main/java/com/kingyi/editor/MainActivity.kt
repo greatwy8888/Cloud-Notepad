@@ -72,6 +72,8 @@ class MainActivity : Activity() {
     }
 
     private inner class OfflineBridge {
+        @JavascriptInterface fun exitApp() { runOnUiThread { finish() } }
+
         @JavascriptInterface fun hasPassword(): Boolean = !prefs.getString("password_hash", null).isNullOrEmpty()
 
         @JavascriptInterface fun setPassword(password: String): Boolean {
