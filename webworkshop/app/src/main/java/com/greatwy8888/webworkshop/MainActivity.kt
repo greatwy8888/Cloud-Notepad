@@ -187,50 +187,44 @@ class MainActivity : androidx.activity.ComponentActivity() {
     // Keep the original image ratio. FIT_CENTER fills as much of the screen as possible
     // and leaves black letterboxing rather than cropping or distorting the image.
     private fun showSplashThenHome() {
+        val selected = splashUri
+        // No custom splash image: go straight to the home screen without a delay.
+        if (selected == null) {
+            showHome()
+            return
+        }
+
+        val bitmap = try {
+            if (selected.scheme == "file") {
+                android.graphics.BitmapFactory.decodeFile(selected.path)
+            } else {
+                contentResolver.openInputStream(selected)?.use {
+                    android.graphics.BitmapFactory.decodeStream(it)
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+
+        // A missing/unreadable image should never hold the user on a blank splash screen.
+        if (bitmap == null) {
+            showHome()
+            return
+        }
+
         window.decorView.systemUiVisibility = (View.SYSTEM_UI_FLAG_FULLSCREEN
             or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             or View.SYSTEM_UI_FLAG_LAYOUT_STABLE)
-        val splash = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val splash = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+        }
         val image = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(Color.BLACK)
+            setImageBitmap(bitmap)
         }
-        val selected = splashUri
-        if (selected != null) {
-            try {
-                val bitmap = if (selected.scheme == "file") {
-                    android.graphics.BitmapFactory.decodeFile(selected.path)
-                } else contentResolver.openInputStream(selected)?.use {
-                    android.graphics.BitmapFactory.decodeStream(it)
-                }
-                if (bitmap != null) image.setImageBitmap(bitmap)
-            } catch (_: Exception) { }
-        }
-        if (image.drawable == null) {
-            val fallback = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = android.view.Gravity.CENTER
-                setBackgroundColor(Color.rgb(238, 245, 252))
-                addView(TextView(this@MainActivity).apply {
-                    text = "网页工坊"
-                    textSize = 32f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    setTextColor(Color.rgb(35, 89, 139))
-                    gravity = android.view.Gravity.CENTER
-                })
-                addView(TextView(this@MainActivity).apply {
-                    text = "把网页变成独立应用"
-                    textSize = 14f
-                    setTextColor(Color.rgb(104, 126, 148))
-                    gravity = android.view.Gravity.CENTER
-                    setPadding(0, dp(10), 0, 0)
-                })
-            }
-            splash.addView(fallback, android.widget.FrameLayout.LayoutParams(-1, -1))
-        } else {
-            splash.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
-        }
+        splash.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
         setContentView(splash)
         Handler(Looper.getMainLooper()).postDelayed({
             window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
