@@ -1,10 +1,8 @@
 import java.util.zip.GZIPInputStream
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
-
 android {
     namespace = "com.kingyi.editor"
     compileSdk = 35
@@ -21,10 +19,9 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
-
 val restoreOfflineEditorHtml by tasks.registering {
     doLast {
-        val compressed = layout.projectDirectory.file("src/main/assets/index.html.gz").asFile
+        val compressed = layout.projectDirectory.file("src/main/offline/index.html.gz").asFile
         val destination = layout.projectDirectory.file("src/main/assets/index.html").asFile
         GZIPInputStream(compressed.inputStream()).use { input ->
             destination.outputStream().use { output -> input.copyTo(output) }
