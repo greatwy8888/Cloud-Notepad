@@ -53,24 +53,34 @@ val restoreOfflineEditorHtml by tasks.registering {
             "</style>",
             "#auth #authBtn{display:flex!important;align-items:center;justify-content:center;text-align:center;}\n</style>"
         )
+
+        // Remove the obsolete rich-text mode control and Markdown conversion controls.
+        html = html.replace(Regex("""<button[^>]*>[^<]*(?:富文本|Markdown|MD转换|MD 转换)[^<]*</button>""", RegexOption.IGNORE_CASE), "")
+        html = html.replace(Regex("""<button[^>]*(?:富文本|Markdown|mdConvert|md-convert)[^>]*>.*?</button>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+
+        // Decode local files from their bytes rather than assuming UTF-8.
+        val decoder = """
+function decodeLocalFile(buffer){
+  var bytes=new Uint8Array(buffer);
+  if(bytes.length>=3&&bytes[0]===239&&bytes[1]===187&&bytes[2]===191) return new TextDecoder('utf-8').decode(bytes.subarray(3));
+  if(bytes.length>=2&&bytes[0]===255&&bytes[1]===254) return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+  if(bytes.length>=2&&bytes[0]===254&&bytes[1]===255) return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  try { return new TextDecoder('utf-8',{fatal:true}).decode(bytes); }
+  catch(e) { try { return new TextDecoder('gb18030').decode(bytes); } catch(e2) { return new TextDecoder('utf-8').decode(bytes); } }
+}
+""".trimIndent()
+        if (!html.contains("function decodeLocalFile(buffer)")) {
+            html = html.replaceFirst("function openLocalFile", decoder + "\\nfunction openLocalFile")
+        }
+        html = html.replace("txt=String(ev.target.result||'')", "txt=decodeLocalFile(ev.target.result)")
+        html = html.replace("reader.readAsText(file,'UTF-8')", "reader.readAsArrayBuffer(file)")
+        html = html.replace("reader.readAsText(file)", "reader.readAsArrayBuffer(file)")
+
+        // Back should show a readable Chinese confirmation, then close the editor screen.
         html = html.replace(
-            "</script>",
-            "document.querySelectorAll('button').forEach(function(b){if((b.textContent||'').indexOf('富文本')>=0)b.remove();});\n</script>"
+            "showConfirm('确定要离开吗？\\n\\n未保存的内容将丢失！',function(){lockApp();});",
+            "showConfirm('确定要退出记事本吗？\\n\\n未保存的内容将丢失！',function(){if(window.Android&&Android.exitApp){Android.exitApp();}else{lockApp();}});"
         )
-        val decoder = listOf(
-            "function decodeLocalFile(buffer){",
-            "var bytes=new Uint8Array(buffer);",
-            "if(bytes.length>=3&&bytes[0]===239&&bytes[1]===187&&bytes[2]===191)return new TextDecoder('utf-8').decode(bytes.subarray(3));",
-            "if(bytes.length>=2&&bytes[0]===255&&bytes[1]===254)return new TextDecoder('utf-16le').decode(bytes.subarray(2));",
-            "if(bytes.length>=2&&bytes[0]===254&&bytes[1]===255)return new TextDecoder('utf-16be').decode(bytes.subarray(2));",
-            "try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(e){try{return new TextDecoder('gb18030').decode(bytes);}catch(e2){return new TextDecoder('utf-8').decode(bytes);}}",
-            "}"
-        ).joinToString("\n")
-        html = html.replace("\$('open').onclick=", decoder + "\n\$('open').onclick=")
-        html = html.replace("r.onload=()=>{if(f.name", "r.onload=()=>{let fileText=decodeLocalFile(r.result);if(f.name")
-        html = html.replace("pre.textContent=r.result;", "pre.textContent=fileText;")
-        html = html.replace("\$('editor').innerHTML=r.result;", "\$('editor').innerHTML=fileText;")
-        html = html.replace("r.readAsText(f);", "r.readAsArrayBuffer(f);")
         destination.writeText(html, Charsets.UTF_8)
 
         val encodedIcon = layout.projectDirectory.file("src/main/icon/ic_launcher.png.b64").asFile
