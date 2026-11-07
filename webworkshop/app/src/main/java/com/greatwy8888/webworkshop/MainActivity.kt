@@ -80,11 +80,13 @@ class MainActivity : androidx.activity.ComponentActivity() {
             if (pendingImage == "icon") {
                 iconUri = uri
                 prefs.edit().putString("icon_uri", uri.toString()).apply()
-                status.text = "应用图标已选择"
+                showHome()
+                status.text = "应用图标已选择，已更新预览"
             } else {
                 splashUri = uri
                 prefs.edit().putString("splash_uri", uri.toString()).apply()
-                status.text = "启动画面已选择"
+                showHome()
+                status.text = "启动画面已选择，已更新预览"
             }
         }
     }
@@ -156,6 +158,42 @@ class MainActivity : androidx.activity.ComponentActivity() {
         showHome()
     }
 
+    private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int): LinearLayout {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(8), dp(10), dp(10))
+            setBackgroundColor(Color.WHITE)
+        }
+        panel.addView(TextView(this).apply {
+            text = caption
+            textSize = 12f
+            setTextColor(Color.rgb(75, 96, 115))
+        })
+        val image = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(Color.rgb(239, 244, 248))
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        if (uri != null) {
+            try {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    image.setImageBitmap(android.graphics.BitmapFactory.decodeStream(input))
+                }
+            } catch (_: Exception) { }
+        }
+        if (image.drawable == null) {
+            image.setImageResource(android.R.drawable.ic_menu_gallery)
+            image.alpha = 0.45f
+        }
+        panel.addView(image, LinearLayout.LayoutParams(-1, previewHeight))
+        panel.addView(TextView(this).apply {
+            text = if (uri == null) "尚未选择图片" else "已选择图片 · 预览按比例缩放"
+            textSize = 11f
+            setTextColor(Color.rgb(120, 135, 150))
+        })
+        return panel
+    }
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun label(value: String) = TextView(this).apply {
         text = value; textSize = 14f; setTextColor(Color.rgb(49, 69, 89))
@@ -216,8 +254,15 @@ class MainActivity : androidx.activity.ComponentActivity() {
         form.addView(appName, LinearLayout.LayoutParams(-1, dp(52)))
 
         form.addView(label("应用图标与启动画面"))
-        form.addView(button("自定义应用图标") { pendingImage = "icon"; imagePicker.launch(arrayOf("image/*")) })
-        form.addView(button("自定义启动画面") { pendingImage = "splash"; imagePicker.launch(arrayOf("image/*")) })
+        form.addView(TextView(this).apply {
+            text = "图标：推荐 512×512 px 正方形 PNG，透明背景，主体居中，建议 ≤1 MB。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB。图片会等比适配，不会拉伸。"
+            textSize = 12f; setTextColor(Color.rgb(105, 124, 142))
+            setPadding(0, dp(2), 0, dp(8))
+        })
+        form.addView(button("自定义应用图标") { pendingImage = "icon"; imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp")) })
+        form.addView(imagePreview(iconUri, "应用图标预览", dp(112)))
+        form.addView(button("自定义启动画面") { pendingImage = "splash"; imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp")) })
+        form.addView(imagePreview(splashUri, "启动画面预览", dp(220)))
 
         form.addView(label("自动设置"))
         form.addView(TextView(this).apply {
@@ -331,8 +376,16 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 }
             } catch (e: Exception) {
                 android.util.Log.e("WebWorkshop", "APK generation failed", e)
+                val detail = generateSequence(e as Throwable?) { it.cause }
+                    .mapNotNull { it.localizedMessage?.takeIf(String::isNotBlank) ?: it.javaClass.simpleName }
+                    .distinct().joinToString("\\n")
                 Handler(Looper.getMainLooper()).post {
-                    status.text = "生成失败：" + (e.localizedMessage ?: e.javaClass.simpleName)
+                    status.text = "生成失败，请查看错误详情"
+                    AlertDialog.Builder(this)
+                        .setTitle("APK 生成失败")
+                        .setMessage(detail.take(1800))
+                        .setPositiveButton("知道了", null)
+                        .show()
                 }
             }
         }.start()
