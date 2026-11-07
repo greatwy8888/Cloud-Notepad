@@ -502,7 +502,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
                 .format(java.util.Date(item.optLong("created")))
             val type = if (item.optString("mode") == "url") "网址" else "本地 HTML"
-            "$date  ·  ${item.optString("name", "未命名")}\\n$type  ·  ${item.optString("package")}"
+            "$date  ·  ${item.optString("name", "未命名")}\n$type  ·  ${item.optString("package")}"
         }
         AlertDialog.Builder(this).setTitle("历史制作（${items.length()}）")
             .setItems(labels) { _, which ->
@@ -510,7 +510,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 val apk = File(item.optString("path"))
                 AlertDialog.Builder(this)
                     .setTitle(item.optString("name", "历史 APK"))
-                    .setMessage("包名：${item.optString("package")}\\n来源：${item.optString("source")}\\n文件：${apk.name}")
+                    .setMessage("包名：${item.optString("package")}\n来源：${item.optString("source")}\n文件：${apk.name}")
                     .setPositiveButton("安装 APK") { _, _ ->
                         if (apk.isFile) installGeneratedApk(apk)
                         else Toast.makeText(this, "APK 文件已不存在，请重新生成", Toast.LENGTH_LONG).show()
