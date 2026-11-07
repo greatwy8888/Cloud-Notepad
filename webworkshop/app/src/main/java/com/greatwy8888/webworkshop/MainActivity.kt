@@ -29,6 +29,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var localHtmlBaseUrl: String? = null
     private var iconUri: Uri? = null
     private var splashUri: Uri? = null
+    private var showingPreview = false
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
 
     private val htmlPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -158,7 +159,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         showHome()
     }
 
-    private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int): LinearLayout {
+    private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int, kind: String): LinearLayout {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(8), dp(10), dp(10))
@@ -169,9 +170,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
             textSize = 12f
             setTextColor(Color.rgb(75, 96, 115))
         })
+        val frame = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(239, 244, 248))
+        }
         val image = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
-            setBackgroundColor(Color.rgb(239, 244, 248))
             setPadding(dp(6), dp(6), dp(6), dp(6))
         }
         if (uri != null) {
@@ -185,9 +188,35 @@ class MainActivity : androidx.activity.ComponentActivity() {
             image.setImageResource(android.R.drawable.ic_menu_gallery)
             image.alpha = 0.45f
         }
-        panel.addView(image, LinearLayout.LayoutParams(-1, previewHeight))
+        frame.addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
+        if (uri != null) {
+            val remove = TextView(this).apply {
+                text = "×"
+                textSize = 26f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.rgb(218, 82, 82))
+                elevation = dp(4).toFloat()
+                setOnClickListener {
+                    if (kind == "icon") {
+                        iconUri = null
+                        prefs.edit().remove("icon_uri").apply()
+                    } else {
+                        splashUri = null
+                        prefs.edit().remove("splash_uri").apply()
+                    }
+                    showHome()
+                    Toast.makeText(this@MainActivity, "图片已删除", Toast.LENGTH_SHORT).show()
+                }
+            }
+            frame.addView(remove, android.widget.FrameLayout.LayoutParams(dp(38), dp(38),
+                android.view.Gravity.TOP or android.view.Gravity.END).apply {
+                setMargins(0, dp(5), dp(5), 0)
+            })
+        }
+        panel.addView(frame, LinearLayout.LayoutParams(-1, previewHeight))
         panel.addView(TextView(this).apply {
-            text = if (uri == null) "尚未选择图片" else "已选择图片 · 预览按比例缩放"
+            text = if (uri == null) "尚未选择图片" else "已选择图片 · 预览按比例缩放（右上角 × 删除）"
             textSize = 11f
             setTextColor(Color.rgb(120, 135, 150))
         })
@@ -204,6 +233,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun showHome() {
+        showingPreview = false
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(26), dp(22), dp(24))
@@ -260,9 +290,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
             setPadding(0, dp(2), 0, dp(8))
         })
         form.addView(button("自定义应用图标") { pendingImage = "icon"; imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp")) })
-        form.addView(imagePreview(iconUri, "应用图标预览", dp(112)))
+        form.addView(imagePreview(iconUri, "应用图标预览", dp(112), "icon"))
         form.addView(button("自定义启动画面") { pendingImage = "splash"; imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp")) })
-        form.addView(imagePreview(splashUri, "启动画面预览", dp(220)))
+        form.addView(imagePreview(splashUri, "启动画面预览", dp(220), "splash"))
 
         form.addView(label("自动设置"))
         form.addView(TextView(this).apply {
@@ -378,7 +408,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 android.util.Log.e("WebWorkshop", "APK generation failed", e)
                 val detail = generateSequence(e as Throwable?) { it.cause }
                     .mapNotNull { it.localizedMessage?.takeIf(String::isNotBlank) ?: it.javaClass.simpleName }
-                    .distinct().joinToString("\\n")
+                    .distinct().joinToString("\n")
                 Handler(Looper.getMainLooper()).post {
                     status.text = "生成失败，请查看错误详情"
                     AlertDialog.Builder(this)
@@ -416,6 +446,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun preview() {
+        showingPreview = true
         val title = appName.text.toString().trim()
         prefs.edit().putString("app_name", title).putString("last_url", address.text.toString().trim()).apply()
         webView = WebView(this).apply {
@@ -447,10 +478,19 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     @Deprecated("Deprecated in Android")
     override fun onBackPressed() {
-        if (::webView.isInitialized && webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            showHome()
+        if (showingPreview) {
+            if (::webView.isInitialized && webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                showHome()
+            }
+            return
         }
+        AlertDialog.Builder(this)
+            .setTitle("退出网页工坊")
+            .setMessage("确定要退出网页工坊吗？")
+            .setPositiveButton("退出") { _, _ -> finish() }
+            .setNegativeButton("取消", null)
+            .show()
     }
 }
