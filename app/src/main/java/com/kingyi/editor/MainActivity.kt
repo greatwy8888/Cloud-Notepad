@@ -30,6 +30,7 @@ class MainActivity : Activity() {
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var exportContent: String? = null
     private var exportMime: String = "text/plain"
+    @Volatile private var editorUnlocked = false
     @Volatile private var pendingTxt: JSONObject? = null
     private val prefs by lazy { getSharedPreferences("local_access", MODE_PRIVATE) }
     private val notesDir by lazy { File(filesDir, "notes").apply { mkdirs() } }
@@ -79,6 +80,8 @@ class MainActivity : Activity() {
 
     private inner class OfflineBridge {
         @JavascriptInterface fun exitApp() { runOnUiThread { finish() } }
+
+        @JavascriptInterface fun setEditorUnlocked(unlocked: Boolean) { editorUnlocked = unlocked }
 
         @JavascriptInterface fun takePendingFile(): String {
             val item = pendingTxt ?: return JSONObject().put("success", false).toString()
@@ -265,9 +268,8 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // The web page handles one visible layer at a time. When no layer
-        // remains (including the password screen), exit the application.
-        if (!::web.isInitialized) {
+        // Once logged out, the system Back button exits immediately.
+        if (!editorUnlocked || !::web.isInitialized) {
             finish()
             return
         }
