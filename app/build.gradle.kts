@@ -16,8 +16,8 @@ android {
         applicationId = "com.kingyi.editor"
         minSdk = 23
         targetSdk = 28
-        versionCode = 10
-        versionName = "1.1.8"
+        versionCode = 11
+        versionName = "1.1.9"
     }
     signingConfigs {
         create("release") {
