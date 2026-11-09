@@ -16,8 +16,8 @@ android {
         applicationId = "com.kingyi.editor"
         minSdk = 23
         targetSdk = 28
-        versionCode = 11
-        versionName = "1.1.9"
+        versionCode = 12
+        versionName = "1.2.0"
     }
     signingConfigs {
         create("release") {
@@ -64,6 +64,45 @@ val restoreOfflineEditorHtml by tasks.registering {
             return String(bytes, Charsets.UTF_8)
         }
         var html = decodeHtml(rawHtml)
+
+        // Keep existing passwords valid, then migrate them to a faster PBKDF2 work factor.
+        html = html.replace("async function hash(p,s){", "async function hash(p,s,it=120000){")
+        html = html.replace("iterations:310000,hash:'SHA-256'", "iterations:it,hash:'SHA-256'")
+        html = html.replace(
+            "async function valid(p){let s=localStorage.getItem(SK),h=localStorage.getItem(HK);return !!s&&!!h&&(await hash(p,un64(s)))===h}",
+            "async function valid(p){let s=localStorage.getItem(SK),h=localStorage.getItem(HK),it=Number(localStorage.getItem('ky_iter_v1')||310000);if(!s||!h)return false;let salt=un64(s);if((await hash(p,salt,it))!==h)return false;if(it!==120000){localStorage.setItem(HK,await hash(p,salt,120000));localStorage.setItem('ky_iter_v1','120000')}return true}"
+        )
+        html = html.replace(
+            "localStorage.setItem(SK,b64(s));localStorage.setItem(HK,await hash(p,s))",
+            "localStorage.setItem(SK,b64(s));localStorage.setItem(HK,await hash(p,s));localStorage.setItem('ky_iter_v1','120000')"
+        )
+        html = html.replace(
+            "localStorage.setItem(SK,b64(s));localStorage.setItem(HK,await hash(b,s))",
+            "localStorage.setItem(SK,b64(s));localStorage.setItem(HK,await hash(b,s));localStorage.setItem('ky_iter_v1','120000')"
+        )
+
+        // Receive TXT files opened from Android after the password screen has been passed.
+        val receiveTxt = """
+window.receiveExternalTxt=()=>{if(!$('auth').classList.contains('hidden'))return;try{if(!window.AndroidBridge)return;let item=JSON.parse(AndroidBridge.takePendingFile());if(!item.success){if(item.message)say(item.message);return}let pre=document.createElement('pre');pre.textContent=item.content;$('editor').replaceChildren(pre);$('fname').value=item.filename.replace(/\.[^.]*$/,'');$('fmt').value='txt';snap();say('已打开：'+item.filename)}catch(e){say('打开 TXT 文件失败')}};
+""".trimIndent()
+        html = html.replace("async function auth(){", receiveTxt + "\nasync function auth(){")
+        html = html.replace(
+            "$('auth').classList.add('hidden');$('bar').classList.remove('hidden');",
+            "if(window.AndroidBridge)AndroidBridge.setEditorUnlocked(true);$('auth').classList.add('hidden');$('bar').classList.remove('hidden');"
+        )
+        html = html.replace(
+            "$('editor').classList.remove('hidden');snap()}",
+            "$('editor').classList.remove('hidden');snap();window.receiveExternalTxt()}"
+        )
+        html = html.replace(
+            "$('lock').onclick=()=>{location.reload()};",
+            "$('lock').onclick=()=>{if(window.AndroidBridge)AndroidBridge.setEditorUnlocked(false);$('pw').value='';$('pw2').value='';$('err').textContent='';$('authBtn').textContent='解锁';$('tip').textContent='请输入访问密码';$('pw2').classList.add('hidden');$('auth').classList.remove('hidden');$('bar').classList.add('hidden');$('editor').classList.add('hidden');$('pw').focus()};"
+        )
+        html = html.replace(
+            "$('auth').classList.remove('hidden');$('bar').classList.add('hidden');$('editor').classList.add('hidden');return true};",
+            "if(window.AndroidBridge)AndroidBridge.setEditorUnlocked(false);$('auth').classList.remove('hidden');$('bar').classList.add('hidden');$('editor').classList.add('hidden');return true};"
+        )
+        html = html.replace("id=""lock"">锁定</button>", "id=""lock"">退出登录</button>")
         html = html.replace(
             "@media print {",
             "#authOverlay button,#authSubmit,#authBtn,#unlockBtn{display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1.2!important;box-sizing:border-box!important;padding-top:12px!important;padding-bottom:12px!important;margin-left:auto!important;margin-right:auto!important;}\\n@media print {"
