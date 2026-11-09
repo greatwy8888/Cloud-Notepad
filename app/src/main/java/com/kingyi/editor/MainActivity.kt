@@ -3,6 +3,10 @@ package com.kingyi.editor
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.Charset
 import android.os.Bundle
 import android.print.PrintAttributes
 import android.print.PrintManager
@@ -26,6 +30,7 @@ class MainActivity : Activity() {
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var exportContent: String? = null
     private var exportMime: String = "text/plain"
+    @Volatile private var pendingTxt: JSONObject? = null
     private val prefs by lazy { getSharedPreferences("local_access", MODE_PRIVATE) }
     private val notesDir by lazy { File(filesDir, "notes").apply { mkdirs() } }
 
@@ -67,12 +72,19 @@ class MainActivity : Activity() {
             }
         }
         setContentView(web)
+        handleIncomingIntent(intent)
         if (savedInstanceState == null) web.loadUrl("file:///android_asset/index.html")
         else web.restoreState(savedInstanceState)
     }
 
     private inner class OfflineBridge {
         @JavascriptInterface fun exitApp() { runOnUiThread { finish() } }
+
+        @JavascriptInterface fun takePendingFile(): String {
+            val item = pendingTxt ?: return JSONObject().put("success", false).toString()
+            pendingTxt = null
+            return item.toString()
+        }
 
         @JavascriptInterface fun hasPassword(): Boolean = !prefs.getString("password_hash", null).isNullOrEmpty()
 
@@ -161,6 +173,54 @@ class MainActivity : Activity() {
                         .setMinMargins(PrintAttributes.Margins.NO_MARGINS).build())
                 } catch (_: Exception) { }
             }
+        }
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val uri = intent.data ?: return
+        try {
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw IllegalArgumentException("无法读取所选 TXT 文件")
+            if (bytes.size > 10 * 1024 * 1024) throw IllegalArgumentException("TXT 文件不能超过 10 MB")
+            var name = "打开的文件.txt"
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) name = cursor.getString(index) ?: name
+                }
+            }
+            val text = decodeText(bytes)
+            pendingTxt = JSONObject().put("success", true).put("filename", name).put("content", text)
+        } catch (e: Exception) {
+            pendingTxt = JSONObject().put("success", false).put("message", e.message ?: "打开 TXT 失败")
+        }
+    }
+
+    private fun decodeText(bytes: ByteArray): String {
+        val data = if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() &&
+            bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) bytes.copyOfRange(3, bytes.size) else bytes
+        val candidates = listOf(Charsets.UTF_8, Charset.forName("GB18030"), Charset.forName("Big5"))
+        for (charset in candidates) {
+            try {
+                return charset.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(data)).toString()
+            } catch (_: Exception) { }
+        }
+        return String(data, Charsets.UTF_8)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+        if (::web.isInitialized) {
+            web.evaluateJavascript(
+                "(function(){if(window.receiveExternalTxt){window.receiveExternalTxt();}})()",
+                null
+            )
         }
     }
 
