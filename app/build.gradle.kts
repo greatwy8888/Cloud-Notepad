@@ -102,7 +102,7 @@ window.receiveExternalTxt=()=>{if(!$('auth').classList.contains('hidden'))return
             "$('auth').classList.remove('hidden');$('bar').classList.add('hidden');$('editor').classList.add('hidden');return true};",
             "if(window.AndroidBridge)AndroidBridge.setEditorUnlocked(false);$('auth').classList.remove('hidden');$('bar').classList.add('hidden');$('editor').classList.add('hidden');return true};"
         )
-        html = html.replace("id=""lock"">锁定</button>", "id=""lock"">退出登录</button>")
+        html = html.replace("""id="lock">锁定</button>""", """id="lock">退出登录</button>""")
         html = html.replace(
             "@media print {",
             "#authOverlay button,#authSubmit,#authBtn,#unlockBtn{display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1.2!important;box-sizing:border-box!important;padding-top:12px!important;padding-bottom:12px!important;margin-left:auto!important;margin-right:auto!important;}\\n@media print {"
