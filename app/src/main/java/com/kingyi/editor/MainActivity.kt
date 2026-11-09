@@ -38,7 +38,8 @@ class MainActivity : Activity() {
     companion object {
         private const val FILE_PICKER = 501
         private const val EXPORT_PICKER = 502
-        private const val ITERATIONS = 210_000
+        private const val ITERATIONS = 100_000
+        private const val LEGACY_ITERATIONS = 210_000
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,7 +98,8 @@ class MainActivity : Activity() {
                 val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
                 val hash = derive(password, salt)
                 prefs.edit().putString("password_salt", Base64.encodeToString(salt, Base64.NO_WRAP))
-                    .putString("password_hash", Base64.encodeToString(hash, Base64.NO_WRAP)).apply()
+                    .putString("password_hash", Base64.encodeToString(hash, Base64.NO_WRAP))
+                    .putInt("password_iterations", ITERATIONS).apply()
                 true
             } catch (_: Exception) { false }
         }
@@ -108,7 +110,16 @@ class MainActivity : Activity() {
             return try {
                 val salt = Base64.decode(saltText, Base64.NO_WRAP)
                 val expected = Base64.decode(hashText, Base64.NO_WRAP)
-                MessageDigest.isEqual(expected, derive(password, salt))
+                val storedIterations = prefs.getInt("password_iterations", LEGACY_ITERATIONS)
+                if (!MessageDigest.isEqual(expected, derive(password, salt, storedIterations))) return false
+                if (storedIterations != ITERATIONS) {
+                    val upgradedHash = derive(password, salt, ITERATIONS)
+                    prefs.edit()
+                        .putString("password_hash", Base64.encodeToString(upgradedHash, Base64.NO_WRAP))
+                        .putInt("password_iterations", ITERATIONS)
+                        .apply()
+                }
+                true
             } catch (_: Exception) { false }
         }
 
@@ -227,8 +238,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun derive(password: String, salt: ByteArray): ByteArray {
-        val spec = PBEKeySpec(password.toCharArray(), salt, ITERATIONS, 256)
+    private fun derive(password: String, salt: ByteArray, iterations: Int = ITERATIONS): ByteArray {
+        val spec = PBEKeySpec(password.toCharArray(), salt, iterations, 256)
         return try { SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1").generateSecret(spec).encoded }
         finally { spec.clearPassword() }
     }
