@@ -16,8 +16,8 @@ android {
         applicationId = "com.kingyi.editor"
         minSdk = 23
         targetSdk = 28
-        versionCode = 12
-        versionName = "1.2.0"
+        versionCode = 13
+        versionName = "1.2.1"
     }
     signingConfigs {
         create("release") {
@@ -64,6 +64,16 @@ val restoreOfflineEditorHtml by tasks.registering {
             return String(bytes, Charsets.UTF_8)
         }
         var html = decodeHtml(rawHtml)
+
+        // Keep Android Back responsive on the password screen and mark login state.
+        html = html.replace(
+            "function lockApp(){",
+            "function lockApp(){Android.setEditorUnlocked(false);"
+        )
+        html = html.replace(
+            "document.getElementById('authOverlay').classList.add('hidden');document.getElementById('appRoot').classList.remove('hidden');",
+            "Android.setEditorUnlocked(true);document.getElementById('authOverlay').classList.add('hidden');document.getElementById('appRoot').classList.remove('hidden');"
+        )
 
         // Keep existing passwords valid, then migrate them to a faster PBKDF2 work factor.
         html = html.replace("async function hash(p,s){", "async function hash(p,s,it=120000){")
