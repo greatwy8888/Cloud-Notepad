@@ -35,7 +35,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var localHtml: String? = null
     private var localHtmlBaseUrl: String? = null
     private var iconUri: Uri? = null
-    private var iconFitMode = "fit" // "fill" crops to cover; "fit" preserves the whole image
+    private var iconFitMode = "manual" // fill = existing cover/crop; manual = user-controlled crop; original = raw uploaded image
     private var splashUri: Uri? = null
     private var showingPreview = false
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
@@ -121,13 +121,13 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 check(saved.length() > 0L) { "所选图片为空" }
                 val savedUri = Uri.fromFile(saved)
                 if (pendingImage == "icon") {
-                    if (iconFitMode == "fill") {
+                    if (iconFitMode == "manual" || iconFitMode == "fit") {
+                        showIconCropEditor(savedUri)
+                    } else {
                         iconUri = savedUri
                         prefs.edit().putString("icon_uri", savedUri.toString()).apply()
                         showHome()
-                        status.text = "已选择图标原图；铺满模式保持原有处理方式"
-                    } else {
-                        showIconCropEditor(savedUri)
+                        status.text = if (iconFitMode == "original") "已选择原始模式：图标文件将按原始图片数据写入，不进行图片处理" else "已选择图标原图；铺满模式保持原有处理方式"
                     }
                 } else {
                     splashUri = savedUri
@@ -210,7 +210,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 ?: "file://${File(path).parentFile?.absolutePath}/"
         }
         iconUri = prefs.getString("icon_uri", null)?.let { Uri.parse(it) }
-        iconFitMode = prefs.getString("icon_fit_mode", "fit") ?: "fit"
+        iconFitMode = (prefs.getString("icon_fit_mode", "manual") ?: "manual").let { if (it == "fit") "manual" else it }
         splashUri = prefs.getString("splash_uri", null)?.let { Uri.parse(it) }
     }
 
@@ -229,7 +229,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             .remove("mode")
             .apply()
         iconUri = null
-        iconFitMode = "fit"
+        iconFitMode = "manual"
         splashUri = null
         localHtml = null
         localHtmlBaseUrl = null
@@ -261,8 +261,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
         val image = ImageView(this).apply {
             scaleType = if (kind == "icon" && iconFitMode == "fill") ImageView.ScaleType.CENTER_CROP else ImageView.ScaleType.FIT_CENTER
-            setPadding(if (kind == "icon" && iconFitMode == "fit") 0 else dp(6), if (kind == "icon" && iconFitMode == "fit") 0 else dp(6),
-                if (kind == "icon" && iconFitMode == "fit") 0 else dp(6), if (kind == "icon" && iconFitMode == "fit") 0 else dp(6))
+            setPadding(if (kind == "icon" && iconFitMode != "fill") 0 else dp(6), if (kind == "icon" && iconFitMode != "fill") 0 else dp(6),
+                if (kind == "icon" && iconFitMode != "fill") 0 else dp(6), if (kind == "icon" && iconFitMode != "fill") 0 else dp(6))
         }
         if (uri != null) {
             try {
@@ -318,7 +318,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             else LinearLayout.LayoutParams(dp(124), previewHeight)
         previewParams.gravity = android.view.Gravity.CENTER_HORIZONTAL
         panel.addView(frame, previewParams)
-        if (kind == "icon" && iconFitMode == "fit" && uri != null) {
+        if (kind == "icon" && (iconFitMode == "manual" || iconFitMode == "fit") && uri != null) {
             panel.addView(button("调整图标位置 / 缩放 / 裁切") {
                 val original = File(filesDir, "custom_images").listFiles()
                     ?.firstOrNull { it.name.startsWith("app_icon_original.") }
@@ -364,7 +364,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 })
             }
             val dialog = AlertDialog.Builder(this)
-                .setTitle("完整模式 · 图标裁切")
+                .setTitle("手动模式 · 图标裁切")
                 .setView(content)
                 .setPositiveButton("应用裁切", null)
                 .setNegativeButton("取消") { _, _ -> bitmap.recycle() }
@@ -384,7 +384,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                         bitmap.recycle()
                         dialog.dismiss()
                         showHome()
-                        status.text = "已应用原图像素裁切；未缩放或修改图像内容"
+                        status.text = "手动模式：已应用原图像素裁切；未添加滤镜、圆角、阴影或背景"
                     } catch (e: Exception) {
                         Toast.makeText(this, e.localizedMessage ?: "裁切失败", Toast.LENGTH_LONG).show()
                     }
@@ -663,7 +663,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
         form.addView(label("应用图标与启动画面"))
         form.addView(TextView(this).apply {
-            text = "铺满模式保持原有铺满裁切逻辑。完整模式可在居中的方形预览框内双指缩放、单指移动；框内保留、框外裁掉，只裁切原图像素，不缩放、不调色、不加滤镜、圆角、阴影或背景。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB."
+            text = "铺满模式：保持原有铺满、裁切及圆角处理逻辑。手动模式：在方形预览框内双指缩放、单指移动，按原图像素手动裁切，其他处理逻辑不变。原始模式：上传图片文件原样写入 APK，不主动铺满、裁切、缩放、变形或添加效果；手机桌面仍可能由 Android 启动器按图标规范缩放或套用遮罩。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB."
             textSize = 12f
             setTextColor(Color.rgb(105, 124, 142))
             setPadding(0, dp(2), 0, dp(8))
@@ -674,15 +674,25 @@ class MainActivity : androidx.activity.ComponentActivity() {
             text = "铺满模式（尽量填满图标，允许裁剪边缘）"
             isChecked = iconFitMode == "fill"
         }
-        val fitMode = RadioButton(this).apply {
+        val manualMode = RadioButton(this).apply {
             id = View.generateViewId()
-            text = "完整模式（手动调整方形裁切，不做自动美化）"
-            isChecked = iconFitMode != "fill"
+            text = "手动模式（原完整模式逻辑：手动调整方形裁切）"
+            isChecked = iconFitMode == "manual" || iconFitMode == "fit"
+        }
+        val originalMode = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "原始模式（上传图片原样作为图标，不主动修改图片）"
+            isChecked = iconFitMode == "original"
         }
         iconModeGroup.addView(fillMode)
-        iconModeGroup.addView(fitMode)
+        iconModeGroup.addView(manualMode)
+        iconModeGroup.addView(originalMode)
         iconModeGroup.setOnCheckedChangeListener { _, checkedId ->
-            val selected = if (checkedId == fillMode.id) "fill" else "fit"
+            val selected = when (checkedId) {
+                fillMode.id -> "fill"
+                originalMode.id -> "original"
+                else -> "manual"
+            }
             if (selected != iconFitMode) {
                 iconFitMode = selected
                 prefs.edit().putString("icon_fit_mode", selected).apply()
