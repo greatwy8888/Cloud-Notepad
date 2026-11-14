@@ -481,6 +481,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         fun addColorField(title: String, key: String, defaultValue: String): EditText {
             form.addView(label(title))
             val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+            lateinit var swatch: TextView
             val field = EditText(this).apply {
                 hint = "#RRGGBB 或 #AARRGGBB"
                 isSingleLine = true
@@ -499,7 +500,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     override fun afterTextChanged(s: android.text.Editable?) {}
                 })
             }
-            val swatch = TextView(this).apply {
+            swatch = TextView(this).apply {
                 text = "调色板"
                 textSize = 11f
                 gravity = android.view.Gravity.CENTER
