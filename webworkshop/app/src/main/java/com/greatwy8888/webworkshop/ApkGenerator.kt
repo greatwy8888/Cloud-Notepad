@@ -42,6 +42,9 @@ object ApkGenerator {
         val iconBackgroundColor2: String = "#FF8A45B8",
         val iconBackgroundGradient: String = "linear",
         val iconBackgroundDirection: Int = 0,
+        val iconForegroundGradientEnabled: Boolean = false,
+        val iconForegroundColor: String = "#FFFFFFFF",
+        val iconForegroundColor2: String = "#FFB8D9FF",
         val iconShadowEnabled: Boolean = false,
         val iconShadowColor: String = "#99000000",
         val iconShadowBlur: Int = 12,
@@ -187,6 +190,7 @@ object ApkGenerator {
                     context, decoded, it, request.iconBackgroundUri,
                     request.iconBackgroundColor, request.iconBackgroundColor2,
                     request.iconBackgroundGradient, request.iconBackgroundDirection,
+                    request.iconForegroundGradientEnabled, request.iconForegroundColor, request.iconForegroundColor2,
                     request.iconShadowEnabled, request.iconShadowColor, request.iconShadowBlur,
                     request.iconGlowEnabled, request.iconGlowColor, request.iconGlowBlur,
                     request.iconOutlineEnabled, request.iconOutlineColor, request.iconOutlineBlur
@@ -250,6 +254,9 @@ object ApkGenerator {
         backgroundColor2: String,
         backgroundGradient: String,
         backgroundDirection: Int,
+        foregroundGradientEnabled: Boolean,
+        foregroundColor: String,
+        foregroundColor2: String,
         shadowEnabled: Boolean,
         shadowColor: String,
         shadowBlur: Int,
@@ -281,6 +288,27 @@ object ApkGenerator {
             val top = (512f - h) / 2f
             canvas.drawBitmap(extracted, null, android.graphics.RectF(left, top, left + w, top + h),
                 android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
+
+            // Optional gradient recoloring uses SRC_ATOP, so the uploaded artwork's
+            // transparent silhouette and alpha edges are preserved.
+            if (foregroundGradientEnabled) {
+                val fg1 = parseColor(foregroundColor, Color.WHITE)
+                val fg2 = parseColor(foregroundColor2, Color.rgb(184, 217, 255))
+                val points = when (backgroundDirection.coerceIn(0, 3)) {
+                    1 -> floatArrayOf(0f, 256f, 512f, 256f)
+                    2 -> floatArrayOf(256f, 0f, 256f, 512f)
+                    3 -> floatArrayOf(512f, 0f, 0f, 512f)
+                    else -> floatArrayOf(0f, 0f, 512f, 512f)
+                }
+                val gradientPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    shader = android.graphics.LinearGradient(
+                        points[0], points[1], points[2], points[3],
+                        fg1, fg2, android.graphics.Shader.TileMode.CLAMP
+                    )
+                    xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
+                }
+                canvas.drawRect(0f, 0f, 512f, 512f, gradientPaint)
+            }
 
             // Effects are drawn from the foreground alpha mask, behind the original artwork.
             // This keeps shadows/glows generic and independent of the uploaded image's subject.
