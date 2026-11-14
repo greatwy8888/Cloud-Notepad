@@ -31,6 +31,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var iconBackgroundUri: Uri? = null
     private var splashUri: Uri? = null
     private var showingPreview = false
+    private var liveIconPreview: ImageView? = null
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
 
     private val htmlPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -47,6 +48,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 val displayName = it.lastPathSegment?.substringAfterLast("/") ?: "页面.html"
                 prefs.edit().putString("local_html_name", displayName).putString("mode", "html").apply()
                 status.text = "已选择本地 HTML：$displayName"
+                showHome()
+                status.text = "已选择本地 HTML：$displayName，可立即预览或生成 APK"
             } catch (e: Exception) {
                 status.text = "读取失败：${e.localizedMessage ?: "无法读取文件"}"
             }
@@ -71,6 +74,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 mode = "html"
                 prefs.edit().putString("local_html_name", entry.name).putString("mode", "html").apply()
                 status.text = "已导入网页文件夹：${entry.name}"
+                showHome()
+                status.text = "已导入网页文件夹：${entry.name}，可立即预览或生成 APK"
             } catch (e: Exception) {
                 status.text = "导入失败：${e.localizedMessage ?: "请检查文件夹内容"}"
             }
@@ -345,6 +350,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
     private fun showHome() {
         showingPreview = false
+        liveIconPreview = null
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(20))
@@ -446,6 +452,27 @@ class MainActivity : androidx.activity.ComponentActivity() {
             setPadding(0, dp(2), 0, dp(8))
         })
         form.addView(imagePreview(iconUri, "图标前景层（自动去除边缘白底）", dp(112), "icon"))
+        val singleImageMode = CheckBox(this).apply {
+            text = "只使用上传的单张图片作为完整图标（不叠加背景和特效）"
+            textSize = 13f
+            isChecked = prefs.getBoolean("icon_single_image_mode", false)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean("icon_single_image_mode", checked).apply()
+                refreshIconPreview()
+            }
+        }
+        form.addView(singleImageMode)
+        form.addView(label("图标实时预览"))
+        val previewFrame = android.widget.FrameLayout(this).apply {
+            background = roundedBackground(Color.rgb(239, 244, 248), Color.rgb(220, 230, 240))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        liveIconPreview = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "图标效果实时预览"
+        }
+        previewFrame.addView(liveIconPreview, android.widget.FrameLayout.LayoutParams(dp(180), dp(180), android.view.Gravity.CENTER))
+        form.addView(previewFrame, LinearLayout.LayoutParams(-1, dp(204)).apply { bottomMargin = dp(8) })
         form.addView(label("图标背景层"))
         form.addView(TextView(this).apply {
             text = "支持纯色、线性渐变、径向渐变及自定义背景图片；前景可叠加阴影、发光和描边效果。颜色可填写 #RRGGBB 或 #AARRGGBB。"
@@ -453,6 +480,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         })
         fun addColorField(title: String, key: String, defaultValue: String): EditText {
             form.addView(label(title))
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
             val field = EditText(this).apply {
                 hint = "#RRGGBB 或 #AARRGGBB"
                 isSingleLine = true
@@ -463,12 +491,28 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 addTextChangedListener(object : android.text.TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                        prefs.edit().putString(key, s?.toString()?.trim().orEmpty()).apply()
+                        val value = s?.toString()?.trim().orEmpty()
+                        prefs.edit().putString(key, value).apply()
+                        refreshPaletteSwatch(swatch, value, defaultValue)
+                        refreshIconPreview()
                     }
                     override fun afterTextChanged(s: android.text.Editable?) {}
                 })
             }
-            form.addView(field, LinearLayout.LayoutParams(-1, dp(46)))
+            val swatch = TextView(this).apply {
+                text = "调色板"
+                textSize = 11f
+                gravity = android.view.Gravity.CENTER
+                setTextColor(Color.WHITE)
+                setPadding(dp(8), 0, dp(8), 0)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { showColorPalette(field, swatch, key, defaultValue) }
+            }
+            refreshPaletteSwatch(swatch, field.text.toString(), defaultValue)
+            line.addView(field, LinearLayout.LayoutParams(0, dp(46), 1f))
+            line.addView(swatch, LinearLayout.LayoutParams(dp(76), dp(40)).apply { leftMargin = dp(8) })
+            form.addView(line)
             return field
         }
         fun addEffectSwitch(title: String, key: String, defaultValue: Boolean = false) =
@@ -476,7 +520,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 text = title
                 textSize = 14f
                 isChecked = prefs.getBoolean(key, defaultValue)
-                setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean(key, checked).apply() }
+                setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean(key, checked).apply(); refreshIconPreview() }
                 form.addView(this)
             }
         fun addEffectSlider(title: String, key: String, defaultValue: Int, maxValue: Int) {
@@ -491,7 +535,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                         caption.text = "$title：$progress"
-                        if (fromUser) prefs.edit().putInt(key, progress).apply()
+                        if (fromUser) { prefs.edit().putInt(key, progress).apply(); refreshIconPreview() }
                     }
                     override fun onStartTrackingTouch(seekBar: SeekBar?) {}
                     override fun onStopTrackingTouch(seekBar: SeekBar?) {}
@@ -513,6 +557,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
                     prefs.edit().putString("icon_background_gradient", gradientChoices[position].second).apply()
+                    refreshIconPreview()
                 }
             }
         }
@@ -527,6 +572,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
                     prefs.edit().putInt("icon_background_direction", directionChoices[position].second).apply()
+                    refreshIconPreview()
                 }
             }
         }
@@ -554,6 +600,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             form.addView(imagePreview(iconBackgroundUri, "自定义图标背景图片", dp(92), "icon_background"))
         }
         form.addView(imagePreview(splashUri, "启动画面（点击图片区域添加或更换）", dp(220), "splash"))
+        refreshIconPreview()
 
         form.addView(label("自动设置"))
         form.addView(TextView(this).apply {
@@ -589,6 +636,146 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
 
+
+    private fun refreshPaletteSwatch(view: TextView, value: String, fallback: String) {
+        val color = try { Color.parseColor(value.trim()) } catch (_: Exception) {
+            try { Color.parseColor(fallback) } catch (_: Exception) { Color.GRAY }
+        }
+        view.background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = dp(9).toFloat()
+            setColor(color)
+            setStroke(dp(1), Color.rgb(190, 200, 210))
+        }
+    }
+
+    private fun showColorPalette(field: EditText, swatch: TextView, key: String, fallback: String) {
+        val palette = listOf(
+            "#FFFFFFFF", "#FF000000", "#FFF44336", "#FFE91E63", "#FF9C27B0",
+            "#FF673AB7", "#FF3F51B5", "#FF2196F3", "#FF03A9F4", "#FF00BCD4",
+            "#FF009688", "#FF4CAF50", "#FF8BC34A", "#FFCDDC39", "#FFFFEB3B",
+            "#FFFFC107", "#FFFF9800", "#FFFF5722", "#FF795548", "#FF607D8B",
+            "#FF315C9B", "#FF8A45B8", "#FF62B8FF", "#99000000"
+        )
+        val labels = palette + "自定义颜色…"
+        AlertDialog.Builder(this).setTitle("选择颜色")
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which < palette.size) {
+                    field.setText(palette[which])
+                    field.setSelection(field.text.length)
+                } else {
+                    val custom = EditText(this).apply {
+                        hint = "#RRGGBB 或 #AARRGGBB"
+                        setText(field.text)
+                        isSingleLine = true
+                    }
+                    AlertDialog.Builder(this).setTitle("输入自定义颜色").setView(custom)
+                        .setPositiveButton("应用") { _, _ ->
+                            val value = custom.text.toString().trim()
+                            try {
+                                Color.parseColor(value)
+                                field.setText(value)
+                                field.setSelection(field.text.length)
+                            } catch (_: Exception) {
+                                Toast.makeText(this, "颜色格式无效，请使用 #RRGGBB 或 #AARRGGBB", Toast.LENGTH_SHORT).show()
+                            }
+                        }.setNegativeButton("取消", null).show()
+                }
+            }.show()
+    }
+
+    private fun refreshIconPreview() {
+        val target = liveIconPreview ?: return
+        val size = 256
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        try {
+            val canvas = android.graphics.Canvas(bitmap)
+            fun color(key: String, fallback: String): Int =
+                try { Color.parseColor(prefs.getString(key, fallback) ?: fallback) } catch (_: Exception) { Color.parseColor(fallback) }
+            val single = prefs.getBoolean("icon_single_image_mode", false)
+            val c1 = color("icon_background_color", "#FF315C9B")
+            val c2 = color("icon_background_color2", "#FF8A45B8")
+            if (single) {
+                canvas.drawColor(Color.rgb(238, 241, 245))
+            } else {
+                when (prefs.getString("icon_background_gradient", "linear")) {
+                    "radial" -> canvas.drawPaint(android.graphics.Paint().apply {
+                        shader = android.graphics.RadialGradient(128f, 128f, 190f, c1, c2, android.graphics.Shader.TileMode.CLAMP)
+                    })
+                    "linear" -> {
+                        val points = when (prefs.getInt("icon_background_direction", 0)) {
+                            1 -> floatArrayOf(0f, 128f, 256f, 128f)
+                            2 -> floatArrayOf(128f, 0f, 128f, 256f)
+                            3 -> floatArrayOf(256f, 0f, 0f, 256f)
+                            else -> floatArrayOf(0f, 0f, 256f, 256f)
+                        }
+                        canvas.drawPaint(android.graphics.Paint().apply {
+                            shader = android.graphics.LinearGradient(points[0], points[1], points[2], points[3], c1, c2, android.graphics.Shader.TileMode.CLAMP)
+                        })
+                    }
+                    else -> canvas.drawColor(c1)
+                }
+            }
+            val uri = iconUri
+            if (uri != null) {
+                val input = if (uri.scheme == "file") File(uri.path ?: "").inputStream() else contentResolver.openInputStream(uri)
+                val decoded = input?.use { android.graphics.BitmapFactory.decodeStream(it) }
+                if (decoded != null) {
+                    val foreground = if (single) decoded else removeNearWhiteEdgeBackground(decoded).also { decoded.recycle() }
+                    try {
+                        val safe = if (single) size.toFloat() else size * 0.66f
+                        val scale = minOf(safe / foreground.width, safe / foreground.height)
+                        val w = foreground.width * scale
+                        val h = foreground.height * scale
+                        val rect = android.graphics.RectF((size-w)/2f, (size-h)/2f, (size+w)/2f, (size+h)/2f)
+                        val artwork = foreground.copy(Bitmap.Config.ARGB_8888, true)
+                        try {
+                            if (!single) {
+                                if (prefs.getBoolean("icon_foreground_gradient_enabled", false)) {
+                                    val p = when (prefs.getInt("icon_background_direction", 0)) {
+                                        1 -> floatArrayOf(0f,128f,256f,128f)
+                                        2 -> floatArrayOf(128f,0f,128f,256f)
+                                        3 -> floatArrayOf(256f,0f,0f,256f)
+                                        else -> floatArrayOf(0f,0f,256f,256f)
+                                    }
+                                    val paint = android.graphics.Paint().apply {
+                                        shader = android.graphics.LinearGradient(p[0],p[1],p[2],p[3],
+                                            color("icon_foreground_color","#FFFFFFFF"), color("icon_foreground_color2","#FFB8D9FF"), android.graphics.Shader.TileMode.CLAMP)
+                                        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
+                                    }
+                                    android.graphics.Canvas(artwork).drawRect(0f,0f,size.toFloat(),size.toFloat(),paint)
+                                }
+                                val mask = artwork.extractAlpha()
+                                try {
+                                    fun effect(enabledKey:String, colorKey:String, fallback:String, blurKey:String, defaultBlur:Int, dy:Float=0f) {
+                                        if (!prefs.getBoolean(enabledKey,false)) return
+                                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                            val blur = prefs.getInt(blurKey,defaultBlur).coerceAtLeast(0)
+                                            if (blur > 0) maskFilter = android.graphics.BlurMaskFilter(blur.toFloat(),android.graphics.BlurMaskFilter.Blur.NORMAL)
+                                        }
+                                        val offset = IntArray(2)
+                                        val layer = mask.extractAlpha(paint,offset)
+                                        try {
+                                            val tint = android.graphics.Paint().apply {
+                                                colorFilter = android.graphics.PorterDuffColorFilter(color(colorKey,fallback),android.graphics.PorterDuff.Mode.SRC_IN)
+                                            }
+                                            canvas.drawBitmap(layer,rect.left+offset[0],rect.top+offset[1]+dy,tint)
+                                        } finally { layer.recycle() }
+                                    }
+                                    effect("icon_glow_enabled","icon_glow_color","#FF62B8FF","icon_glow_blur",16f.toInt())
+                                    effect("icon_shadow_enabled","icon_shadow_color","#99000000","icon_shadow_blur",12,5f)
+                                    effect("icon_outline_enabled","icon_outline_color","#FFFFFFFF","icon_outline_blur",3)
+                                } finally { mask.recycle() }
+                            }
+                            canvas.drawBitmap(artwork,null,rect,android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
+                        } finally { artwork.recycle() }
+                    } finally { foreground.recycle() }
+                }
+            }
+            target.setImageBitmap(bitmap.copy(Bitmap.Config.ARGB_8888, false))
+        } catch (e: Exception) {
+            android.util.Log.w("WebWorkshop", "Live icon preview failed", e)
+        } finally { bitmap.recycle() }
+    }
 
     private fun saveBuildHistory(request: ApkGenerator.Request, apk: File) {
         try {
@@ -765,6 +952,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             iconUri = iconUri,
             splashUri = splashUri,
             iconBackgroundUri = iconBackgroundUri,
+            iconSingleImageMode = prefs.getBoolean("icon_single_image_mode", false),
             iconBackgroundColor = prefs.getString("icon_background_color", "#FF315C9B") ?: "#FF315C9B",
             iconBackgroundColor2 = prefs.getString("icon_background_color2", "#FF8A45B8") ?: "#FF8A45B8",
             iconBackgroundGradient = prefs.getString("icon_background_gradient", "linear") ?: "linear",
