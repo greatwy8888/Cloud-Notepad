@@ -6,6 +6,7 @@ import android.net.Uri
 import java.io.File
 import androidx.documentfile.provider.DocumentFile
 import android.graphics.Color
+import android.graphics.Bitmap
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
