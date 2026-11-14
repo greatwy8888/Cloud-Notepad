@@ -232,120 +232,77 @@ object ApkGenerator {
         val adaptiveDir = File(decoded, "res/mipmap-anydpi-v26").apply { mkdirs() }
         val fallbackDir = File(decoded, "res/mipmap-mdpi").apply { mkdirs() }
 
-        if (iconFitMode == "manual" || iconFitMode == "fit") {
-            // Manual mode retains the previous complete-mode behavior exactly:
-            // user-positioned square pixel crop, with no additional image effects.
-            // In complete mode the user has already positioned and cropped the source
-            // manually in the square editor. Preserve those PNG pixels exactly: no
-            // automatic crop, rounding, tint, shadow, background, or filtering.
-            val sourceFile = if (iconUri.scheme == "file") {
-                File(iconUri.path ?: "").takeIf { it.isFile }
-                    ?: throw IllegalStateException("手动裁切后的图标文件不存在")
-            } else {
-                val copied = File(context.cacheDir, "webworkshop-manual-icon.png")
+        // Both supported modes use the exact bytes of the image shown in the preview:
+        // original mode points to the untouched upload; manual mode points to the user's
+        // exported pixel crop. No second crop, resampling, rounding, tint, shadow or filter.
+        val sourceFile = if (iconUri.scheme == "file") {
+            File(iconUri.path ?: "").takeIf { it.isFile }
+                ?: throw IllegalStateException("预览框中的图标文件不存在")
+        } else {
+            File(context.cacheDir, "webworkshop-preview-icon.img").also { copied ->
                 context.contentResolver.openInputStream(iconUri)?.use { input ->
                     copied.outputStream().use { output -> input.copyTo(output) }
-                } ?: throw IllegalStateException("无法读取手动裁切图标")
-                copied
+                } ?: throw IllegalStateException("无法读取预览框中的图标")
             }
-            try {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                sourceFile.inputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
-                require(bounds.outWidth > 0 && bounds.outWidth == bounds.outHeight) {
-                    "完整模式图标必须是有效的正方形原图裁切结果"
-                }
-                File(drawableDir, "ic_launcher_foreground.png").outputStream().use { out ->
-                    sourceFile.inputStream().use { it.copyTo(out) }
-                }
-                File(fallbackDir, "ic_launcher.png").outputStream().use { out ->
-                    sourceFile.inputStream().use { it.copyTo(out) }
-                }
-            } finally {
-                if (sourceFile.parentFile == context.cacheDir) sourceFile.delete()
+        }
+
+        try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            sourceFile.inputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
+            require(bounds.outWidth > 0 && bounds.outHeight > 0) { "图标图片格式无法识别" }
+            val extension = when (bounds.outMimeType?.lowercase()) {
+                "image/png" -> "png"
+                "image/jpeg" -> "jpg"
+                "image/webp" -> "webp"
+                else -> throw IllegalArgumentException("图标仅支持 PNG、JPG 或 WebP 图片")
             }
 
-            // Adaptive icon background remains fully transparent. The launcher applies
-            // its own platform mask; the app does not alter the uploaded crop.
-            val background = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-            try {
-                FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
-                    check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "透明图标背景生成失败" }
-                }
-            } finally {
-                background.recycle()
+            val rawDir = File(decoded, "res/drawable-nodpi").apply { mkdirs() }
+            rawDir.listFiles()?.filter { it.name.startsWith("ic_launcher_preview.") }?.forEach { it.delete() }
+            val rawDrawable = File(rawDir, "ic_launcher_preview.$extension")
+            sourceFile.inputStream().use { input ->
+                rawDrawable.outputStream().use { output -> input.copyTo(output) }
             }
-        } else if (iconFitMode == "original") {
-            // Copy the uploaded image bytes unchanged. An inset drawable preserves its
-            // aspect ratio in Android's launcher viewport without app-side crop/stretch.
-            val sourceFile = if (iconUri.scheme == "file") {
-                File(iconUri.path ?: "").takeIf { it.isFile }
-                    ?: throw IllegalStateException("原始图标文件不存在")
-            } else {
-                File(context.cacheDir, "webworkshop-original-icon.img").also { copied ->
-                    context.contentResolver.openInputStream(iconUri)?.use { input ->
-                        copied.outputStream().use { output -> input.copyTo(output) }
-                    } ?: throw IllegalStateException("无法读取原始图标")
-                }
+
+            // Clear stale density-specific launcher assets so an older processed icon
+            // cannot take precedence over the currently selected preview image.
+            decoded.walkTopDown()
+                .filter { it.isFile && it.parentFile?.name?.startsWith("mipmap-") == true &&
+                    it.name.startsWith("ic_launcher") && it.name != "ic_launcher.xml" }
+                .forEach { it.delete() }
+
+            val fallback = File(fallbackDir, "ic_launcher.$extension")
+            sourceFile.inputStream().use { input ->
+                fallback.outputStream().use { output -> input.copyTo(output) }
             }
-            try {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                sourceFile.inputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
-                require(bounds.outWidth > 0 && bounds.outHeight > 0) { "原始图标图片格式无法识别" }
-                val extension = when (bounds.outMimeType?.lowercase()) {
-                    "image/png" -> "png"
-                    "image/jpeg" -> "jpg"
-                    "image/webp" -> "webp"
-                    else -> throw IllegalArgumentException("原始模式仅支持 PNG、JPG 或 WebP 图片")
-                }
 
-                val rawDir = File(decoded, "res/drawable-nodpi").apply { mkdirs() }
-                rawDir.listFiles()?.filter { it.name.startsWith("ic_launcher_original.") }?.forEach { it.delete() }
-                val rawDrawable = File(rawDir, "ic_launcher_original.$extension")
-                sourceFile.inputStream().use { input ->
-                    rawDrawable.outputStream().use { output -> input.copyTo(output) }
-                }
-
-                // Remove pre-existing density-specific icons so a stale processed image
-                // cannot override the exact original fallback resource.
-                decoded.walkTopDown()
-                    .filter { it.isFile && it.parentFile?.name?.startsWith("mipmap-") == true &&
-                        it.name.startsWith("ic_launcher.") && it.name != "ic_launcher.xml" }
-                    .forEach { it.delete() }
-                val fallback = File(fallbackDir, "ic_launcher.$extension")
-                sourceFile.inputStream().use { input ->
-                    fallback.outputStream().use { output -> input.copyTo(output) }
-                }
-
-                // Adaptive icons use a 108dp viewport and a roughly 72dp safe zone.
-                // Keep the entire original image inside that safe zone so common launcher
-                // masks do not cut off its edges. The source bytes remain untouched.
-                val viewport = 108f
-                val safeSize = 72f
-                val aspect = bounds.outWidth.toFloat() / bounds.outHeight.toFloat()
-                var insetLeft = (viewport - safeSize) / 2f
-                var insetRight = insetLeft
-                var insetTop = (viewport - safeSize) / 2f
-                var insetBottom = insetTop
-                if (aspect > 1f) {
-                    val imageHeight = safeSize / aspect
-                    insetTop = (viewport - imageHeight) / 2f
-                    insetBottom = insetTop
-                } else if (aspect < 1f) {
-                    val imageWidth = safeSize * aspect
-                    insetLeft = (viewport - imageWidth) / 2f
-                    insetRight = insetLeft
-                }
-                val insetXml = "<inset xmlns:android=\"http://schemas.android.com/apk/res/android\" " +
-                    "android:drawable=\"@drawable/ic_launcher_original\" " +
-                    "android:insetLeft=\"" + insetLeft + "dp\" " +
-                    "android:insetTop=\"" + insetTop + "dp\" " +
-                    "android:insetRight=\"" + insetRight + "dp\" " +
-                    "android:insetBottom=\"" + insetBottom + "dp\"/>"
-                File(drawableDir, "ic_launcher_foreground.png").delete()
-                File(drawableDir, "ic_launcher_foreground.xml").writeText(insetXml, Charsets.UTF_8)
-            } finally {
-                if (sourceFile.parentFile == context.cacheDir) sourceFile.delete()
+            // Android launchers impose their own icon viewport and mask. Keep the full
+            // source aspect ratio inside the adaptive safe area; the embedded image bytes
+            // remain identical to the preview source.
+            val viewport = 108f
+            val safeSize = 72f
+            val aspect = bounds.outWidth.toFloat() / bounds.outHeight.toFloat()
+            var insetLeft = (viewport - safeSize) / 2f
+            var insetRight = insetLeft
+            var insetTop = (viewport - safeSize) / 2f
+            var insetBottom = insetTop
+            if (aspect > 1f) {
+                val imageHeight = safeSize / aspect
+                insetTop = (viewport - imageHeight) / 2f
+                insetBottom = insetTop
+            } else if (aspect < 1f) {
+                val imageWidth = safeSize * aspect
+                insetLeft = (viewport - imageWidth) / 2f
+                insetRight = insetLeft
             }
+            val insetXml = "<inset xmlns:android=\\"http://schemas.android.com/apk/res/android\\" " +
+                "android:drawable=\\"@drawable-nodpi/ic_launcher_preview\\" " +
+                "android:insetLeft=\\"$insetLeft" + "dp\\" " +
+                "android:insetTop=\\"$insetTop" + "dp\\" " +
+                "android:insetRight=\\"$insetRight" + "dp\\" " +
+                "android:insetBottom=\\"$insetBottom" + "dp\\"/>"
+            File(drawableDir, "ic_launcher_foreground.png").delete()
+            File(drawableDir, "ic_launcher_foreground.xml").writeText(insetXml, Charsets.UTF_8)
 
             val background = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
             try {
@@ -355,46 +312,8 @@ object ApkGenerator {
             } finally {
                 background.recycle()
             }
-        } else {
-            // Keep the established fill-mode behavior unchanged: cover the square,
-            // crop overflow, and apply the existing rounded-corner treatment.
-            val source = readBitmap(context, iconUri)
-            val icon = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
-            try {
-                val canvas = android.graphics.Canvas(icon)
-                val path = android.graphics.Path().apply {
-                    addRoundRect(android.graphics.RectF(0f, 0f, 512f, 512f), 92f, 92f, android.graphics.Path.Direction.CW)
-                }
-                canvas.save()
-                canvas.clipPath(path)
-                val scale = maxOf(512f / source.width, 512f / source.height)
-                val width = source.width * scale
-                val height = source.height * scale
-                val left = (512f - width) / 2f
-                val top = (512f - height) / 2f
-                canvas.drawBitmap(
-                    source, null, android.graphics.RectF(left, top, left + width, top + height),
-                    android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
-                )
-                canvas.restore()
-                FileOutputStream(File(drawableDir, "ic_launcher_foreground.png")).use {
-                    check(icon.compress(Bitmap.CompressFormat.PNG, 100, it)) { "APP 图标生成失败" }
-                }
-                FileOutputStream(File(fallbackDir, "ic_launcher.png")).use {
-                    check(icon.compress(Bitmap.CompressFormat.PNG, 100, it)) { "传统 APP 图标生成失败" }
-                }
-            } finally {
-                source.recycle()
-                icon.recycle()
-            }
-            val background = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
-            try {
-                FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
-                    check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "透明图标背景生成失败" }
-                }
-            } finally {
-                background.recycle()
-            }
+        } finally {
+            if (sourceFile.parentFile == context.cacheDir) sourceFile.delete()
         }
 
         File(adaptiveDir, "ic_launcher.xml").writeText(
