@@ -138,20 +138,180 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin-top:12px}td,th{b
 <div class="panel"><b>生成一次性序列号</b><div class="grid">
 <div><label>适用网页工坊版本标识</label><input id="build" value="1.4.6" placeholder="例如 1.4.6"></div>
 <div><label>数量</label><input id="count" type="number" min="1" max="500" value="10"></div>
-</div><button onclick="createCodes()">生成序列号</button> <button class="secondary" onclick="loadList()">刷新记录</button>
+</div><button id="createButton" type="button">生成序列号</button> <button id="refreshButton" class="secondary" type="button">刷新记录</button>
 <div class="muted">每个序列号仅可成功激活一次；不同序列号可在同一设备上先后使用。生成后无法再次查看完整明文。</div></div>
-<div class="panel"><b>本次生成的序列号（仅显示一次）</b><pre id="codes">尚未生成</pre><button class="secondary" onclick="copyCodes()">复制序列号</button><button class="secondary" onclick="downloadCodes()">导出 TXT</button></div>
+<div class="panel"><b>本次生成的序列号（仅显示一次）</b><pre id="codes">尚未生成</pre><button id="copyButton" class="secondary" type="button">复制序列号</button><button id="downloadButton" class="secondary" type="button">导出 TXT</button></div>
 <div class="panel"><b>使用记录</b><div id="message" class="muted">输入管理员密钥后点击刷新。</div><div style="overflow:auto"><table><thead><tr><th>序列号提示</th><th>版本</th><th>状态</th><th>激活时间 / 设备</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 </main><script>
-let latest=[];
-const safe=s=>String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
-const key=()=>document.getElementById("key").value;
-async function api(path,options={}){const r=await fetch(path,{...options,headers:{...(options.headers||{}),"content-type":"application/json","x-webworkshop-admin-key":key()}});const j=await r.json().catch(()=>({}));if(!r.ok)throw Error((j.error||"请求失败")+"（HTTP "+r.status+"）");return j}
-async function createCodes(){const message=document.getElementById("message");const button=document.querySelector("button[onclick=\"createCodes()\"]");if(button)button.disabled=true;message.textContent="正在向授权服务器申请生成…";try{const j=await api("/api/webworkshop/admin/create",{method:"POST",body:JSON.stringify({build_id:document.getElementById("build").value,count:Number(document.getElementById("count").value)})});latest=j.serials||[];document.getElementById("codes").textContent=latest.length?latest.join("\n"):"服务器未返回序列号";message.textContent="已生成 "+j.count+" 个序列号。明文仅显示本次，请立即复制或导出保存。";await loadList()}catch(e){message.textContent="生成失败："+e.message;alert("序列号生成失败：\n"+e.message)}finally{if(button)button.disabled=false}}
-async function loadList(){try{const j=await api("/api/webworkshop/admin/list");document.getElementById("rows").innerHTML=(j.licenses||[]).map(x=>{const status=x.revoked_at?"已撤销":x.used_at?"已使用":"未使用";const detail=x.used_at?new Date(x.used_at).toLocaleString()+" / "+(x.device_id||""):"—";return "<tr><td>"+safe(x.serial_hint)+"</td><td>"+safe(x.build_id)+"</td><td>"+status+"</td><td>"+safe(detail)+"</td><td>"+(!x.used_at&&!x.revoked_at?'<button class="danger" onclick="revoke(\''+x.id+'\')">撤销</button>':"—")+"</td></tr>"}).join("");document.getElementById("message").textContent="共显示 "+(j.licenses||[]).length+" 条（最多 500 条）"}catch(e){document.getElementById("message").textContent=e.message}}
-async function revoke(id){if(!confirm("确定撤销这个尚未使用的序列号？"))return;try{await api("/api/webworkshop/admin/revoke",{method:"POST",body:JSON.stringify({id})});await loadList()}catch(e){alert(e.message)}}
-function copyCodes(){if(latest.length)navigator.clipboard.writeText(latest.join("\n")).then(()=>alert("已复制"))}
-function downloadCodes(){if(!latest.length)return;const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([latest.join("\n")],{type:"text/plain;charset=utf-8"}));a.download="webworkshop-serials.txt";a.click();URL.revokeObjectURL(a.href)}
+"use strict";
+var latest = [];
+var keyInput = document.getElementById("key");
+var messageBox = document.getElementById("message");
+var codesBox = document.getElementById("codes");
+var createButton = document.getElementById("createButton");
+var refreshButton = document.getElementById("refreshButton");
+function showMessage(message, isError) {
+  messageBox.textContent = message;
+  messageBox.style.color = isError ? "#b91c1c" : "#166534";
+  messageBox.style.fontWeight = isError ? "700" : "400";
+}
+function safe(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+function adminKey() { return keyInput.value.trim(); }
+function explainError(error) {
+  if (!error) return "未知错误";
+  var parts = [];
+  if (error.name) parts.push(error.name);
+  if (error.message) parts.push(error.message);
+  if (error.stack) parts.push(error.stack.split("\n").slice(0, 3).join(" | "));
+  return parts.join("：") || String(error);
+}
+async function api(path, options) {
+  options = options || {};
+  var headers = Object.assign({}, options.headers || {}, {
+    "content-type": "application/json",
+    "x-webworkshop-admin-key": adminKey()
+  });
+  var response;
+  try {
+    response = await fetch(path, Object.assign({}, options, { headers: headers, cache: "no-store" }));
+  } catch (error) {
+    throw new Error("网络请求失败（" + path + "）： " + explainError(error) + "。请检查网络、Worker 地址及浏览器连接。");
+  }
+  var raw = await response.text();
+  var data;
+  try { data = raw ? JSON.parse(raw) : {}; }
+  catch (_) { data = { raw: raw }; }
+  if (!response.ok) {
+    var detail = data.error || data.message || data.detail || data.raw || raw || "服务器未返回错误详情";
+    throw new Error("请求 " + path + " 失败，HTTP " + response.status + " " + response.statusText + "；服务器信息：" + String(detail).slice(0, 1200));
+  }
+  if (data && data.ok === false) throw new Error(data.error || "服务器返回失败状态");
+  return data;
+}
+async function loadList() {
+  showMessage("正在读取授权记录…", false);
+  refreshButton.disabled = true;
+  try {
+    var data = await api("/api/webworkshop/admin/list", { method: "GET" });
+    var records = data.licenses || [];
+    document.getElementById("rows").innerHTML = records.map(function (item) {
+      var status = item.revoked_at ? "已撤销" : item.used_at ? "已使用" : "未使用";
+      var detail = item.used_at ? new Date(item.used_at).toLocaleString() + " / " + (item.device_id || "") : "—";
+      var action = !item.used_at && !item.revoked_at
+        ? '<button class="danger revokeButton" data-id="' + safe(item.id) + '">撤销</button>' : "—";
+      return "<tr><td>" + safe(item.serial_hint) + "</td><td>" + safe(item.build_id) +
+        "</td><td>" + status + "</td><td>" + safe(detail) + "</td><td>" + action + "</td></tr>";
+    }).join("");
+    showMessage("记录读取成功：当前显示 " + records.length + " 条（最多 500 条）。", false);
+  } catch (error) {
+    showMessage("读取记录失败：" + explainError(error), true);
+  } finally {
+    refreshButton.disabled = false;
+  }
+}
+async function createCodes() {
+  var buildId = document.getElementById("build").value.trim();
+  var count = Number(document.getElementById("count").value);
+  if (!adminKey()) {
+    showMessage("生成失败：管理员密钥为空，请先输入管理员密钥。", true);
+    keyInput.focus();
+    return;
+  }
+  if (!/^[A-Za-z0-9._-]{1,40}$/.test(buildId)) {
+    showMessage("生成失败：版本标识格式无效，只能使用字母、数字、点、下划线和短横线。", true);
+    return;
+  }
+  if (!Number.isInteger(count) || count < 1 || count > 500) {
+    showMessage("生成失败：数量必须是 1 至 500 的整数。", true);
+    return;
+  }
+  createButton.disabled = true;
+  codesBox.textContent = "正在生成，请稍候…";
+  showMessage("正在连接授权服务器并生成序列号…", false);
+  try {
+    var data = await api("/api/webworkshop/admin/create", {
+      method: "POST",
+      body: JSON.stringify({ build_id: buildId, count: count })
+    });
+    latest = Array.isArray(data.serials) ? data.serials : [];
+    codesBox.textContent = latest.length ? latest.join("\n") : "服务器请求成功，但没有返回序列号。请检查 Worker 响应。";
+    if (!latest.length) {
+      showMessage("生成接口返回成功，但序列号列表为空。服务器响应：" + JSON.stringify(data).slice(0, 1000), true);
+    } else {
+      showMessage("生成成功：已生成 " + latest.length + " 个序列号。请立即复制或导出保存，明文只显示这一次。", false);
+      await loadList();
+    }
+  } catch (error) {
+    latest = [];
+    codesBox.textContent = "生成失败。请查看上方详细错误信息。";
+    showMessage("生成序列号失败：" + explainError(error), true);
+  } finally {
+    createButton.disabled = false;
+  }
+}
+async function revokeCode(id) {
+  if (!window.confirm("确定撤销这个尚未使用的序列号？")) return;
+  try {
+    await api("/api/webworkshop/admin/revoke", { method: "POST", body: JSON.stringify({ id: id }) });
+    showMessage("撤销成功。", false);
+    await loadList();
+  } catch (error) {
+    showMessage("撤销失败：" + explainError(error), true);
+  }
+}
+function copyCodes() {
+  if (!latest.length) {
+    showMessage("目前没有可复制的序列号。", true);
+    return;
+  }
+  var value = latest.join("\n");
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(value).then(function () {
+      showMessage("序列号已复制到剪贴板。", false);
+    }).catch(function (error) {
+      showMessage("复制失败：" + explainError(error) + "。请手动选中序列号复制。", true);
+    });
+  } else {
+    showMessage("当前浏览器不支持自动复制，请长按序列号区域手动复制。", true);
+  }
+}
+function downloadCodes() {
+  if (!latest.length) {
+    showMessage("目前没有可导出的序列号。", true);
+    return;
+  }
+  var blobUrl = URL.createObjectURL(new Blob([latest.join("\n")], { type: "text/plain;charset=utf-8" }));
+  var link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = "webworkshop-serials.txt";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 2000);
+  showMessage("已开始导出 TXT 文件。", false);
+}
+window.addEventListener("error", function (event) {
+  showMessage("页面脚本运行错误：" + (event.message || "未知错误") +
+    (event.filename ? "；文件：" + event.filename : "") +
+    (event.lineno ? "；行号：" + event.lineno : ""), true);
+});
+window.addEventListener("unhandledrejection", function (event) {
+  showMessage("页面异步操作异常：" + explainError(event.reason), true);
+});
+createButton.addEventListener("click", createCodes);
+refreshButton.addEventListener("click", loadList);
+document.getElementById("copyButton").addEventListener("click", copyCodes);
+document.getElementById("downloadButton").addEventListener("click", downloadCodes);
+document.getElementById("rows").addEventListener("click", function (event) {
+  var button = event.target.closest(".revokeButton");
+  if (button) revokeCode(button.getAttribute("data-id"));
+});
+showMessage("管理页面脚本已启动。请输入管理员密钥，然后点击刷新记录或生成序列号。", false);
 </script></body></html>`;
 
 export async function handleWebWorkshopLicenseRequest(req, env) {
