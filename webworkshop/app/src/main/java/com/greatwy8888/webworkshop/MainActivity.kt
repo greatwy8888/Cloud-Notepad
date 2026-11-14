@@ -451,27 +451,98 @@ class MainActivity : androidx.activity.ComponentActivity() {
             text = "可选择透明或纯色背景，也可以上传一张背景图片；背景图片会铺满图标画布。"
             textSize = 12f; setTextColor(Color.rgb(105, 124, 142))
         })
-        val backgroundChoices = listOf(
-            "透明背景" to "#00000000",
-            "白色背景" to "#FFFFFFFF",
-            "黑色背景" to "#FF202124",
-            "浅蓝背景" to "#FFEAF3FA",
-            "深蓝背景" to "#FF245A83",
-            "绿色背景" to "#FF2E8B57"
-        )
-        val backgroundSpinner = Spinner(this).apply {
+        fun addColorField(title: String, key: String, defaultValue: String): EditText {
+            form.addView(label(title))
+            val field = EditText(this).apply {
+                hint = "#RRGGBB 或 #AARRGGBB"
+                isSingleLine = true
+                textSize = 14f
+                setText(prefs.getString(key, defaultValue))
+                setPadding(dp(12), dp(9), dp(12), dp(9))
+                background = roundedBackground(Color.rgb(248, 251, 254), Color.rgb(220, 230, 240))
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        prefs.edit().putString(key, s?.toString()?.trim().orEmpty()).apply()
+                    }
+                    override fun afterTextChanged(s: android.text.Editable?) {}
+                })
+            }
+            form.addView(field, LinearLayout.LayoutParams(-1, dp(46)))
+            return field
+        }
+        fun addEffectSwitch(title: String, key: String, defaultValue: Boolean = false) =
+            CheckBox(this).apply {
+                text = title
+                textSize = 14f
+                isChecked = prefs.getBoolean(key, defaultValue)
+                setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean(key, checked).apply() }
+                form.addView(this)
+            }
+        fun addEffectSlider(title: String, key: String, defaultValue: Int, maxValue: Int) {
+            val caption = TextView(this).apply {
+                textSize = 12f
+                setTextColor(Color.rgb(105, 124, 142))
+                setPadding(0, dp(5), 0, 0)
+            }
+            val slider = SeekBar(this).apply {
+                max = maxValue
+                progress = prefs.getInt(key, defaultValue).coerceIn(0, maxValue)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        caption.text = "$title：$progress"
+                        if (fromUser) prefs.edit().putInt(key, progress).apply()
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                })
+            }
+            caption.text = "$title：${slider.progress}"
+            form.addView(caption)
+            form.addView(slider, LinearLayout.LayoutParams(-1, dp(42)))
+        }
+
+        form.addView(label("背景样式"))
+        val gradientChoices = listOf("纯色" to "solid", "线性渐变" to "linear", "径向渐变" to "radial")
+        val gradientSpinner = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
-                backgroundChoices.map { it.first })
-            val savedColor = prefs.getString("icon_background_color", "#00000000")
-            setSelection(backgroundChoices.indexOfFirst { it.second == savedColor }.coerceAtLeast(0))
+                gradientChoices.map { it.first })
+            val saved = prefs.getString("icon_background_gradient", "linear")
+            setSelection(gradientChoices.indexOfFirst { it.second == saved }.coerceAtLeast(0))
             onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
                 override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    prefs.edit().putString("icon_background_color", backgroundChoices[position].second).apply()
+                    prefs.edit().putString("icon_background_gradient", gradientChoices[position].second).apply()
                 }
             }
         }
-        form.addView(backgroundSpinner, LinearLayout.LayoutParams(-1, dp(48)))
+        form.addView(gradientSpinner, LinearLayout.LayoutParams(-1, dp(46)))
+        val directionChoices = listOf("左上到右下" to 0, "左到右" to 1, "上到下" to 2, "右上到左下" to 3)
+        val directionSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                directionChoices.map { it.first })
+            val saved = prefs.getInt("icon_background_direction", 0)
+            setSelection(saved.coerceIn(0, directionChoices.lastIndex))
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    prefs.edit().putInt("icon_background_direction", directionChoices[position].second).apply()
+                }
+            }
+        }
+        form.addView(directionSpinner, LinearLayout.LayoutParams(-1, dp(46)))
+        addColorField("背景颜色一", "icon_background_color", "#FF315C9B")
+        addColorField("背景颜色二（渐变终点）", "icon_background_color2", "#FF8A45B8")
+        form.addView(label("前景效果"))
+        addEffectSwitch("启用柔和阴影", "icon_shadow_enabled")
+        addColorField("阴影颜色", "icon_shadow_color", "#99000000")
+        addEffectSlider("阴影模糊", "icon_shadow_blur", 12, 32)
+        addEffectSwitch("启用发光效果", "icon_glow_enabled")
+        addColorField("发光颜色", "icon_glow_color", "#FF62B8FF")
+        addEffectSlider("发光范围", "icon_glow_blur", 16, 40)
+        addEffectSwitch("启用前景描边", "icon_outline_enabled")
+        addColorField("描边颜色", "icon_outline_color", "#FFFFFFFF")
+        addEffectSlider("描边宽度", "icon_outline_blur", 3, 16)
         form.addView(button("上传图标背景图片（可选）") {
             pendingImage = "icon_background"
             imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
@@ -691,7 +762,19 @@ class MainActivity : androidx.activity.ComponentActivity() {
             iconUri = iconUri,
             splashUri = splashUri,
             iconBackgroundUri = iconBackgroundUri,
-            iconBackgroundColor = prefs.getString("icon_background_color", "#00000000") ?: "#00000000",
+            iconBackgroundColor = prefs.getString("icon_background_color", "#FF315C9B") ?: "#FF315C9B",
+            iconBackgroundColor2 = prefs.getString("icon_background_color2", "#FF8A45B8") ?: "#FF8A45B8",
+            iconBackgroundGradient = prefs.getString("icon_background_gradient", "linear") ?: "linear",
+            iconBackgroundDirection = prefs.getInt("icon_background_direction", 0),
+            iconShadowEnabled = prefs.getBoolean("icon_shadow_enabled", false),
+            iconShadowColor = prefs.getString("icon_shadow_color", "#99000000") ?: "#99000000",
+            iconShadowBlur = prefs.getInt("icon_shadow_blur", 12),
+            iconGlowEnabled = prefs.getBoolean("icon_glow_enabled", false),
+            iconGlowColor = prefs.getString("icon_glow_color", "#FF62B8FF") ?: "#FF62B8FF",
+            iconGlowBlur = prefs.getInt("icon_glow_blur", 16),
+            iconOutlineEnabled = prefs.getBoolean("icon_outline_enabled", false),
+            iconOutlineColor = prefs.getString("icon_outline_color", "#FFFFFFFF") ?: "#FFFFFFFF",
+            iconOutlineBlur = prefs.getInt("icon_outline_blur", 3),
             projectIdentity = if (mode == "url") "url:" + url.trim() else
                 prefs.getString("local_project_identity", "") ?: ""
         )
