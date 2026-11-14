@@ -722,7 +722,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 val input = if (uri.scheme == "file") File(uri.path ?: "").inputStream() else contentResolver.openInputStream(uri)
                 val decoded = input?.use { android.graphics.BitmapFactory.decodeStream(it) }
                 if (decoded != null) {
-                    val foreground = if (single) decoded else removeNearWhiteEdgeBackground(decoded).also { decoded.recycle() }
+                    val foreground: Bitmap = if (single) decoded else decoded.copy(Bitmap.Config.ARGB_8888, true).also { decoded.recycle() }
                     try {
                         val safe = if (single) size.toFloat() else size * 0.66f
                         val scale = minOf(safe / foreground.width, safe / foreground.height)
