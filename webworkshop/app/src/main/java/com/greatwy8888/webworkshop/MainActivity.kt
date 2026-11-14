@@ -35,6 +35,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var splashUri: Uri? = null
     private var showingPreview = false
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
+    private var historyDialog: AlertDialog? = null
 
     private val htmlPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -661,11 +662,13 @@ class MainActivity : androidx.activity.ComponentActivity() {
             addView(content)
             isFillViewport = true
         }
-        AlertDialog.Builder(this)
+        historyDialog?.dismiss()
+        historyDialog = AlertDialog.Builder(this)
             .setTitle("制作历史（${items.length()}）")
             .setView(scroll)
             .setNegativeButton("关闭", null)
-            .show()
+            .create()
+        historyDialog?.show()
     }
 
     private fun downloadHistoryApk(apk: File) {
@@ -683,7 +686,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         items: org.json.JSONArray
     ) {
         val apk = File(item.optString("path"))
-        AlertDialog.Builder(this)
+        val actionsDialog = AlertDialog.Builder(this)
             .setTitle(item.optString("name", "历史 APK"))
             .setMessage("包名：${item.optString("package")}\n来源：${item.optString("source")}\n文件：${apk.name}")
             .setPositiveButton("安装 APK") { _, _ ->
@@ -691,14 +694,25 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 else Toast.makeText(this, "APK 文件已不存在，请重新生成", Toast.LENGTH_LONG).show()
             }
             .setNeutralButton("下载 APK") { _, _ -> downloadHistoryApk(apk) }
-            .setNegativeButton("删除记录") { _, _ ->
+            .setNegativeButton("删除记录", null)
+            .create()
+
+        actionsDialog.setOnShowListener {
+            actionsDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+                // Persist first, then close both dialogs before rebuilding the history.
+                // This avoids opening a refreshed list underneath the still-visible action dialog.
                 val next = org.json.JSONArray()
-                for (i in 0 until items.length()) if (i != index) next.put(items.optJSONObject(i))
-                prefs.edit().putString("build_history", next.toString()).apply()
+                for (i in 0 until items.length()) {
+                    if (i != index) items.optJSONObject(i)?.let { next.put(it) }
+                }
+                prefs.edit().putString("build_history", next.toString()).commit()
+                actionsDialog.dismiss()
+                historyDialog?.dismiss()
                 Toast.makeText(this, "历史记录已删除", Toast.LENGTH_SHORT).show()
-                showHistoryDialog()
+                Handler(Looper.getMainLooper()).post { showHistoryDialog() }
             }
-            .show()
+        }
+        actionsDialog.show()
     }
 
     private fun currentProjectPackage(): String {
