@@ -169,7 +169,7 @@ object ApkGenerator {
 
             stage = "处理自定义图片"
             request.iconUri?.let {
-                replaceImage(context, it, File(decoded, "res/drawable/ic_webworkshop.xml"), 512, 512)
+                replaceImage(context, it, File(decoded, "res/drawable/ic_webworkshop.xml"), 512, 512, removeWhiteBackground = true)
             }
             request.splashUri?.let {
                 replaceImage(context, it, File(decoded, "res/drawable/splash.xml"), 1080, 1920)
@@ -220,7 +220,7 @@ object ApkGenerator {
             .sign()
     }
 
-    private fun replaceImage(context: Context, uri: Uri, oldResource: File, maxWidth: Int, maxHeight: Int) {
+    private fun replaceImage(context: Context, uri: Uri, oldResource: File, maxWidth: Int, maxHeight: Int, removeWhiteBackground: Boolean = false) {
         // Read the selected image once into a private temporary file. Some document providers
         // revoke transient URI grants or do not support a second openInputStream call.
         val source = File(context.cacheDir, "webworkshop-image-${System.nanoTime()}.img")
@@ -243,31 +243,87 @@ object ApkGenerator {
             val options = BitmapFactory.Options().apply { inSampleSize = sample }
             val decoded = source.inputStream().use { BitmapFactory.decodeStream(it, null, options) }
                 ?: throw IllegalStateException("图片解码失败")
-            // The generated splash resource is always a 9:16 canvas. Fit the original
-            // image inside it (never crop or stretch), center it, and use black letterboxing.
-            val canvasBitmap = Bitmap.createBitmap(maxWidth, maxHeight, Bitmap.Config.ARGB_8888)
+            val prepared = if (removeWhiteBackground) removeEdgeWhiteBackground(decoded) else decoded
             try {
-                val canvas = android.graphics.Canvas(canvasBitmap)
-                canvas.drawColor(Color.BLACK)
-                val scale = minOf(maxWidth.toFloat() / decoded.width, maxHeight.toFloat() / decoded.height)
-                val drawWidth = decoded.width * scale
-                val drawHeight = decoded.height * scale
-                val left = (maxWidth - drawWidth) / 2f
-                val top = (maxHeight - drawHeight) / 2f
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
-                canvas.drawBitmap(decoded, null, android.graphics.RectF(left, top, left + drawWidth, top + drawHeight), paint)
-                val target = File(oldResource.parentFile, oldResource.nameWithoutExtension + ".png")
-                FileOutputStream(target).use {
-                    check(canvasBitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) { "图片转换失败" }
+                val canvasBitmap = Bitmap.createBitmap(maxWidth, maxHeight, Bitmap.Config.ARGB_8888)
+                try {
+                    val canvas = android.graphics.Canvas(canvasBitmap)
+                    if (!removeWhiteBackground) canvas.drawColor(Color.BLACK)
+                    val scale = minOf(maxWidth.toFloat() / prepared.width, maxHeight.toFloat() / prepared.height)
+                    val drawWidth = prepared.width * scale
+                    val drawHeight = prepared.height * scale
+                    val left = (maxWidth - drawWidth) / 2f
+                    val top = (maxHeight - drawHeight) / 2f
+                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+                    canvas.drawBitmap(prepared, null, android.graphics.RectF(left, top, left + drawWidth, top + drawHeight), paint)
+                    val target = File(oldResource.parentFile, oldResource.nameWithoutExtension + ".png")
+                    FileOutputStream(target).use {
+                        check(canvasBitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) { "图片转换失败" }
+                    }
+                    oldResource.delete()
+                } finally {
+                    canvasBitmap.recycle()
                 }
-                oldResource.delete()
             } finally {
-                canvasBitmap.recycle()
+                if (prepared !== decoded) prepared.recycle()
                 decoded.recycle()
             }
         } finally {
             source.delete()
         }
+    }
+
+
+    // Remove only near-white pixels connected to the image edges. White details enclosed
+    // by the red artwork (the play triangle and outline) remain fully opaque.
+    private fun removeEdgeWhiteBackground(source: Bitmap): Bitmap {
+        val width = source.width
+        val height = source.height
+        val pixels = IntArray(width * height)
+        source.getPixels(pixels, 0, width, 0, 0, width, height)
+        val visited = BooleanArray(pixels.size)
+        val queue = IntArray(pixels.size)
+        var head = 0
+        var tail = 0
+        fun isBackground(index: Int): Boolean {
+            val color = pixels[index]
+            val a = Color.alpha(color)
+            return a > 0 && Color.red(color) >= 238 && Color.green(color) >= 238 && Color.blue(color) >= 238
+        }
+        fun add(index: Int) {
+            if (!visited[index] && isBackground(index)) {
+                visited[index] = true
+                queue[tail++] = index
+            }
+        }
+        for (x in 0 until width) { add(x); add((height - 1) * width + x) }
+        for (y in 0 until height) { add(y * width); add(y * width + width - 1) }
+        while (head < tail) {
+            val index = queue[head++]
+            pixels[index] = Color.TRANSPARENT
+            val x = index % width
+            val y = index / width
+            if (x > 0) add(index - 1)
+            if (x + 1 < width) add(index + 1)
+            if (y > 0) add(index - width)
+            if (y + 1 < height) add(index + width)
+            if (x > 0 && y > 0) add(index - width - 1)
+            if (x + 1 < width && y > 0) add(index - width + 1)
+            if (x > 0 && y + 1 < height) add(index + width - 1)
+            if (x + 1 < width && y + 1 < height) add(index + width + 1)
+        }
+        var minX = width; var minY = height; var maxX = -1; var maxY = -1
+        for (y in 0 until height) for (x in 0 until width) {
+            if (Color.alpha(pixels[y * width + x]) != 0) {
+                minX = minOf(minX, x); minY = minOf(minY, y)
+                maxX = maxOf(maxX, x); maxY = maxOf(maxY, y)
+            }
+        }
+        require(maxX >= minX && maxY >= minY) { "图标背景处理失败：没有识别到主体图案" }
+        val cropped = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        val result = Bitmap.createBitmap(cropped, minX, minY, maxX - minX + 1, maxY - minY + 1)
+        cropped.recycle()
+        return result
     }
 
     private fun copyTree(source: File, destination: File) {
