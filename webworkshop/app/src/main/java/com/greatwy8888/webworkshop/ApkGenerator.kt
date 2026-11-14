@@ -249,8 +249,8 @@ object ApkGenerator {
             try {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 sourceFile.inputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
-                require(bounds.outWidth == bounds.outHeight && bounds.outWidth in setOf(512, 1024)) {
-                    "完整模式图标必须是 512×512 或 1024×1024，请重新裁切"
+                require(bounds.outWidth > 0 && bounds.outWidth == bounds.outHeight) {
+                    "完整模式图标必须是有效的正方形原图裁切结果"
                 }
                 File(drawableDir, "ic_launcher_foreground.png").outputStream().use { out ->
                     sourceFile.inputStream().use { it.copyTo(out) }
