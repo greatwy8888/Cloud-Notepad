@@ -35,7 +35,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var localHtml: String? = null
     private var localHtmlBaseUrl: String? = null
     private var iconUri: Uri? = null
-    private var iconFitMode = "manual" // fill = existing cover/crop; manual = user-controlled crop; original = raw uploaded image
+    private var iconFitMode = "manual" // original = untouched upload; manual = exact user-selected preview crop
     private var splashUri: Uri? = null
     private var showingPreview = false
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
@@ -260,9 +260,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
             frame.background = roundedBackground(Color.rgb(239, 244, 248), Color.rgb(215, 225, 235))
         }
         val image = ImageView(this).apply {
-            scaleType = if (kind == "icon" && iconFitMode == "fill") ImageView.ScaleType.CENTER_CROP else ImageView.ScaleType.FIT_CENTER
-            setPadding(if (kind == "icon" && iconFitMode != "fill") 0 else dp(6), if (kind == "icon" && iconFitMode != "fill") 0 else dp(6),
-                if (kind == "icon" && iconFitMode != "fill") 0 else dp(6), if (kind == "icon" && iconFitMode != "fill") 0 else dp(6))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(0, 0, 0, 0)
         }
         if (uri != null) {
             try {
@@ -663,36 +662,26 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
         form.addView(label("应用图标与启动画面"))
         form.addView(TextView(this).apply {
-            text = "铺满模式：保持原有铺满、裁切及圆角处理逻辑。手动模式：在方形预览框内双指缩放、单指移动，按原图像素手动裁切，其他处理逻辑不变。原始模式：上传图片文件原样写入 APK，不主动铺满、裁切、缩放、变形或添加效果；手机桌面仍可能由 Android 启动器按图标规范缩放或套用遮罩。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB."
+            text = "原始模式：预览框完整显示上传原图，生成时直接使用原始图片数据，不做裁切、滤镜、圆角或背景处理。手动模式：可在方形预览框中拖动、双指缩放并确认裁切；确认后，预览框中的裁切结果将原样写入图标资源，不再二次处理。\n说明：Android 启动器可能按系统图标规格整体缩放或套用形状遮罩，应用无法控制桌面最终渲染。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB."
             textSize = 12f
             setTextColor(Color.rgb(105, 124, 142))
             setPadding(0, dp(2), 0, dp(8))
         })
         val iconModeGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
-        val fillMode = RadioButton(this).apply {
+        val originalMode = RadioButton(this).apply {
             id = View.generateViewId()
-            text = "铺满模式（尽量填满图标，允许裁剪边缘）"
-            isChecked = iconFitMode == "fill"
+            text = "原始模式（预览框完整显示原图，原始图片数据直接作为图标）"
+            isChecked = iconFitMode == "original"
         }
         val manualMode = RadioButton(this).apply {
             id = View.generateViewId()
-            text = "手动模式（原完整模式逻辑：手动调整方形裁切）"
+            text = "手动模式（调整预览框中的裁切内容，确认后按预览结果原样生成图标）"
             isChecked = iconFitMode == "manual" || iconFitMode == "fit"
         }
-        val originalMode = RadioButton(this).apply {
-            id = View.generateViewId()
-            text = "原始模式（上传图片原样作为图标，不主动修改图片）"
-            isChecked = iconFitMode == "original"
-        }
-        iconModeGroup.addView(fillMode)
-        iconModeGroup.addView(manualMode)
         iconModeGroup.addView(originalMode)
+        iconModeGroup.addView(manualMode)
         iconModeGroup.setOnCheckedChangeListener { _, checkedId ->
-            val selected = when (checkedId) {
-                fillMode.id -> "fill"
-                originalMode.id -> "original"
-                else -> "manual"
-            }
+            val selected = if (checkedId == originalMode.id) "original" else "manual"
             if (selected != iconFitMode) {
                 iconFitMode = selected
                 prefs.edit().putString("icon_fit_mode", selected).apply()
