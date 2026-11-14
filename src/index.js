@@ -221,7 +221,7 @@ const SW = `self.addEventListener("install",e=>self.skipWaiting());self.addEvent
 export default {
  async fetch(req,env,ctx){
    const path = new URL(req.url).pathname;
-   if(path === "/admin/webworkshop-licenses" || path.startsWith("/api/webworkshop/")) {
+   if(path === "/admin/webworkshop-licenses" || path === "/admin/webworkshop-licenses.js" || path.startsWith("/api/webworkshop/")) {
      try { return await handleWebWorkshopLicenseRequest(req, env); }
      catch(e) { return json({error:"授权服务错误",detail:String(e.message)},500); }
    }
