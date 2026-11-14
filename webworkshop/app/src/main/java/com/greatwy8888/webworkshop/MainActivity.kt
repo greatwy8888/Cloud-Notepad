@@ -29,6 +29,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var localHtml: String? = null
     private var localHtmlBaseUrl: String? = null
     private var iconUri: Uri? = null
+    private var iconFitMode = "fit" // "fill" crops to cover; "fit" preserves the whole image
     private var splashUri: Uri? = null
     private var showingPreview = false
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
@@ -194,6 +195,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 ?: "file://${File(path).parentFile?.absolutePath}/"
         }
         iconUri = prefs.getString("icon_uri", null)?.let { Uri.parse(it) }
+        iconFitMode = prefs.getString("icon_fit_mode", "fit") ?: "fit"
         splashUri = prefs.getString("splash_uri", null)?.let { Uri.parse(it) }
     }
 
@@ -201,6 +203,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         // Clear only the current form selection, not durable project identity/signing data.
         prefs.edit()
             .remove("icon_uri")
+            .remove("icon_fit_mode")
             .remove("splash_uri")
             .remove("last_url")
             .remove("app_name")
@@ -211,6 +214,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             .remove("mode")
             .apply()
         iconUri = null
+        iconFitMode = "fit"
         splashUri = null
         localHtml = null
         localHtmlBaseUrl = null
@@ -235,7 +239,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             setBackgroundColor(Color.rgb(239, 244, 248))
         }
         val image = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
+            scaleType = if (kind == "icon" && iconFitMode == "fill") ImageView.ScaleType.CENTER_CROP else ImageView.ScaleType.FIT_CENTER
             setPadding(dp(6), dp(6), dp(6), dp(6))
         }
         if (uri != null) {
@@ -441,6 +445,29 @@ class MainActivity : androidx.activity.ComponentActivity() {
             setTextColor(Color.rgb(105, 124, 142))
             setPadding(0, dp(2), 0, dp(8))
         })
+        val iconModeGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val fillMode = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "铺满模式（尽量填满图标，允许裁剪边缘）"
+            isChecked = iconFitMode == "fill"
+        }
+        val fitMode = RadioButton(this).apply {
+            id = View.generateViewId()
+            text = "完整模式（保留整张图片，不裁剪）"
+            isChecked = iconFitMode != "fill"
+        }
+        iconModeGroup.addView(fillMode)
+        iconModeGroup.addView(fitMode)
+        iconModeGroup.setOnCheckedChangeListener { _, checkedId ->
+            val selected = if (checkedId == fillMode.id) "fill" else "fit"
+            if (selected != iconFitMode) {
+                iconFitMode = selected
+                prefs.edit().putString("icon_fit_mode", selected).apply()
+                showHome()
+            }
+        }
+        form.addView(label("图标适配方式"))
+        form.addView(iconModeGroup)
         form.addView(imagePreview(iconUri, "APP 图标（上传单张图片）", dp(150), "icon"))
         form.addView(imagePreview(splashUri, "启动画面（点击图片区域添加或更换）", dp(220), "splash"))
         form.addView(label("自动设置"))
@@ -596,7 +623,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             appName = title, mode = mode, url = url,
             localPath = prefs.getString("local_html_path", null),
             localBase = prefs.getString("local_html_base", null),
-            iconUri = iconUri, splashUri = splashUri, projectIdentity = identity,
+            iconUri = iconUri, iconFitMode = iconFitMode, splashUri = splashUri, projectIdentity = identity,
         )
         return ApkGenerator.resolvePackageName(this, request)
     }
@@ -649,6 +676,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             localPath = prefs.getString("local_html_path", null),
             localBase = prefs.getString("local_html_base", null),
             iconUri = iconUri,
+            iconFitMode = iconFitMode,
             splashUri = splashUri,
             projectIdentity = if (mode == "url") "url:" + url.trim() else
                 prefs.getString("local_project_identity", "") ?: ""
