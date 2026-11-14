@@ -696,7 +696,20 @@ class MainActivity : androidx.activity.ComponentActivity() {
             if (selected != iconFitMode) {
                 iconFitMode = selected
                 prefs.edit().putString("icon_fit_mode", selected).apply()
-                showHome()
+                // Always switch back to the untouched upload when changing modes.
+                // Manual mode then opens the existing crop editor; fill/original use
+                // the untouched source file as their input.
+                val original = File(filesDir, "custom_images").listFiles()
+                    ?.firstOrNull { it.name.startsWith("app_icon_original.") && it.isFile }
+                if (original != null) {
+                    iconUri = Uri.fromFile(original)
+                    prefs.edit().putString("icon_uri", iconUri.toString()).apply()
+                }
+                if (selected == "manual" && iconUri != null) {
+                    showIconCropEditor(iconUri!!)
+                } else {
+                    showHome()
+                }
             }
         }
         form.addView(label("图标适配方式"))
