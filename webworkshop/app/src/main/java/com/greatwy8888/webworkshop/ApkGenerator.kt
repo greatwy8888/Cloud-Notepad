@@ -37,24 +37,7 @@ object ApkGenerator {
         val iconUri: Uri?,
         val splashUri: Uri?,
         val projectIdentity: String,
-        val iconBackgroundUri: Uri? = null,
-        val iconSingleImageMode: Boolean = false,
-        val iconBackgroundColor: String = "#FF315C9B",
-        val iconBackgroundColor2: String = "#FF8A45B8",
-        val iconBackgroundGradient: String = "linear",
-        val iconBackgroundDirection: Int = 0,
-        val iconForegroundGradientEnabled: Boolean = false,
-        val iconForegroundColor: String = "#FFFFFFFF",
-        val iconForegroundColor2: String = "#FFB8D9FF",
-        val iconShadowEnabled: Boolean = false,
-        val iconShadowColor: String = "#99000000",
-        val iconShadowBlur: Int = 12,
-        val iconGlowEnabled: Boolean = false,
-        val iconGlowColor: String = "#FF62B8FF",
-        val iconGlowBlur: Int = 16,
-        val iconOutlineEnabled: Boolean = false,
-        val iconOutlineColor: String = "#FFFFFFFF",
-        val iconOutlineBlur: Int = 3
+
     )
 
     fun packageNameFor(mode: String, projectIdentity: String): String {
@@ -187,15 +170,7 @@ object ApkGenerator {
 
             stage = "处理自定义图片"
             request.iconUri?.let {
-                createAdaptiveIconResources(
-                    context, decoded, it, request.iconBackgroundUri,
-                    request.iconSingleImageMode, request.iconBackgroundColor, request.iconBackgroundColor2,
-                    request.iconBackgroundGradient, request.iconBackgroundDirection,
-                    request.iconForegroundGradientEnabled, request.iconForegroundColor, request.iconForegroundColor2,
-                    request.iconShadowEnabled, request.iconShadowColor, request.iconShadowBlur,
-                    request.iconGlowEnabled, request.iconGlowColor, request.iconGlowBlur,
-                    request.iconOutlineEnabled, request.iconOutlineColor, request.iconOutlineBlur
-                )
+                createAdaptiveIconResources(context, decoded, it)
             }
             request.splashUri?.let {
                 replaceImage(context, it, File(decoded, "res/drawable/splash.xml"), 1080, 1920)
@@ -249,193 +224,53 @@ object ApkGenerator {
     private fun createAdaptiveIconResources(
         context: Context,
         decoded: File,
-        iconUri: Uri,
-        backgroundUri: Uri?,
-        singleImageMode: Boolean,
-        backgroundColor: String,
-        backgroundColor2: String,
-        backgroundGradient: String,
-        backgroundDirection: Int,
-        foregroundGradientEnabled: Boolean,
-        foregroundColor: String,
-        foregroundColor2: String,
-        shadowEnabled: Boolean,
-        shadowColor: String,
-        shadowBlur: Int,
-        glowEnabled: Boolean,
-        glowColor: String,
-        glowBlur: Int,
-        outlineEnabled: Boolean,
-        outlineColor: String,
-        outlineBlur: Int
+        iconUri: Uri
     ) {
         val drawableDir = File(decoded, "res/drawable").apply { mkdirs() }
         val adaptiveDir = File(decoded, "res/mipmap-anydpi-v26").apply { mkdirs() }
         val fallbackDir = File(decoded, "res/mipmap-mdpi").apply { mkdirs() }
 
-        fun parseColor(value: String, fallback: Int): Int =
-            try { Color.parseColor(value.trim()) } catch (_: Exception) { fallback }
-
-        val original = readBitmap(context, iconUri)
-        val extracted = try { if (singleImageMode) original.copy(Bitmap.Config.ARGB_8888, false) else removeNearWhiteEdgeBackground(original) } finally { original.recycle() }
-        val foreground = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        val source = readBitmap(context, iconUri)
+        val icon = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
         try {
-            val canvas = android.graphics.Canvas(foreground)
-            // Keep the subject inside Android's adaptive-icon safe zone (about 66% of the canvas).
-            val safeSize = if (singleImageMode) 512f else 512f * 0.66f
-            val scale = minOf(safeSize / extracted.width, safeSize / extracted.height)
-            val w = extracted.width * scale
-            val h = extracted.height * scale
-            val left = (512f - w) / 2f
-            val top = (512f - h) / 2f
-            canvas.drawBitmap(extracted, null, android.graphics.RectF(left, top, left + w, top + h),
-                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
-
-            // Optional gradient recoloring uses SRC_ATOP, so the uploaded artwork's
-            // transparent silhouette and alpha edges are preserved.
-            if (foregroundGradientEnabled && !singleImageMode) {
-                val fg1 = parseColor(foregroundColor, Color.WHITE)
-                val fg2 = parseColor(foregroundColor2, Color.rgb(184, 217, 255))
-                val points = when (backgroundDirection.coerceIn(0, 3)) {
-                    1 -> floatArrayOf(0f, 256f, 512f, 256f)
-                    2 -> floatArrayOf(256f, 0f, 256f, 512f)
-                    3 -> floatArrayOf(512f, 0f, 0f, 512f)
-                    else -> floatArrayOf(0f, 0f, 512f, 512f)
-                }
-                val gradientPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                    shader = android.graphics.LinearGradient(
-                        points[0], points[1], points[2], points[3],
-                        fg1, fg2, android.graphics.Shader.TileMode.CLAMP
-                    )
-                    xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_ATOP)
-                }
-                canvas.drawRect(0f, 0f, 512f, 512f, gradientPaint)
+            val canvas = android.graphics.Canvas(icon)
+            // Apply rounded corners to the uploaded image while preserving its aspect ratio.
+            val path = android.graphics.Path().apply {
+                addRoundRect(android.graphics.RectF(0f, 0f, 512f, 512f), 92f, 92f, android.graphics.Path.Direction.CW)
             }
+            canvas.save()
+            canvas.clipPath(path)
+            val scale = minOf(512f / source.width, 512f / source.height)
+            val width = source.width * scale
+            val height = source.height * scale
+            val left = (512f - width) / 2f
+            val top = (512f - height) / 2f
+            canvas.drawBitmap(
+                source, null, android.graphics.RectF(left, top, left + width, top + height),
+                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+            )
+            canvas.restore()
 
-            // Effects are drawn from the foreground alpha mask, behind the original artwork.
-            // This keeps shadows/glows generic and independent of the uploaded image's subject.
-            val foregroundArtwork = foreground.copy(Bitmap.Config.ARGB_8888, false)
-            try {
-                val subjectMask = foregroundArtwork.extractAlpha()
-                try {
-                    fun drawMaskEffect(colorValue: String, blur: Int, dx: Float = 0f, dy: Float = 0f) {
-                        val radius = blur.coerceIn(0, 48)
-                        val offset = IntArray(2)
-                        val maskPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                            if (radius > 0) maskFilter = android.graphics.BlurMaskFilter(
-                                radius.toFloat(), android.graphics.BlurMaskFilter.Blur.NORMAL
-                            )
-                        }
-                        val mask = subjectMask.extractAlpha(maskPaint, offset)
-                        try {
-                            val tint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
-                                colorFilter = android.graphics.PorterDuffColorFilter(
-                                    parseColor(colorValue, Color.BLACK), android.graphics.PorterDuff.Mode.SRC_IN
-                                )
-                            }
-                            canvas.drawBitmap(mask, offset[0] + dx, offset[1] + dy, tint)
-                        } finally {
-                            mask.recycle()
-                        }
-                    }
-
-                    if (!singleImageMode) {
-                        if (glowEnabled) drawMaskEffect(glowColor, glowBlur)
-                        if (shadowEnabled) drawMaskEffect(shadowColor, shadowBlur, 0f, 9f)
-                        if (outlineEnabled) drawMaskEffect(outlineColor, outlineBlur)
-                    }
-                } finally {
-                    subjectMask.recycle()
-                }
-                // Restore the fully tinted artwork above the effects, keeping the gradient visible.
-                canvas.drawBitmap(foregroundArtwork, 0f, 0f, null)
-            } finally {
-                foregroundArtwork.recycle()
-            }
             FileOutputStream(File(drawableDir, "ic_launcher_foreground.png")).use {
-                check(foreground.compress(Bitmap.CompressFormat.PNG, 100, it)) { "自适应图标前景层生成失败" }
+                check(icon.compress(Bitmap.CompressFormat.PNG, 100, it)) { "APP 图标生成失败" }
+            }
+            FileOutputStream(File(fallbackDir, "ic_launcher.png")).use {
+                check(icon.compress(Bitmap.CompressFormat.PNG, 100, it)) { "传统 APP 图标生成失败" }
             }
         } finally {
-            foreground.recycle()
-            extracted.recycle()
+            source.recycle()
+            icon.recycle()
         }
 
-        val color1 = parseColor(backgroundColor, Color.rgb(49, 92, 155))
-        val color2 = parseColor(backgroundColor2, Color.rgb(138, 69, 184))
+        // Transparent adaptive background: the uploaded image is the only icon artwork.
         val background = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
         try {
-            val bgCanvas = android.graphics.Canvas(background)
-            if (singleImageMode) {
-                bgCanvas.drawColor(Color.TRANSPARENT)
-            } else if (backgroundUri != null) {
-                val bgSource = readBitmap(context, backgroundUri)
-                try {
-                    val scale = maxOf(512f / bgSource.width, 512f / bgSource.height)
-                    val w = bgSource.width * scale
-                    val h = bgSource.height * scale
-                    val dst = android.graphics.RectF((512f - w) / 2f, (512f - h) / 2f,
-                        (512f + w) / 2f, (512f + h) / 2f)
-                    bgCanvas.drawBitmap(bgSource, null, dst,
-                        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
-                } finally { bgSource.recycle() }
-            } else if (backgroundGradient == "radial") {
-                val shader = android.graphics.RadialGradient(
-                    256f, 256f, 370f, color1, color2, android.graphics.Shader.TileMode.CLAMP
-                )
-                bgCanvas.drawPaint(android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader })
-            } else if (backgroundGradient == "linear") {
-                val points = when (backgroundDirection.coerceIn(0, 3)) {
-                    1 -> floatArrayOf(0f, 256f, 512f, 256f)
-                    2 -> floatArrayOf(256f, 0f, 256f, 512f)
-                    3 -> floatArrayOf(512f, 0f, 0f, 512f)
-                    else -> floatArrayOf(0f, 0f, 512f, 512f)
-                }
-                val shader = android.graphics.LinearGradient(
-                    points[0], points[1], points[2], points[3],
-                    color1, color2, android.graphics.Shader.TileMode.CLAMP
-                )
-                bgCanvas.drawPaint(android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader })
-            } else {
-                bgCanvas.drawColor(color1)
-            }
-
-            // When a background photo is supplied, lightly blend the chosen gradient over it.
-            if (!singleImageMode && backgroundUri != null && backgroundGradient != "solid") {
-                val overlayColors = intArrayOf(
-                    (color1 and 0x00FFFFFF) or 0x55000000,
-                    (color2 and 0x00FFFFFF) or 0x55000000
-                )
-                val overlayShader: android.graphics.Shader = if (backgroundGradient == "radial") {
-                    android.graphics.RadialGradient(256f, 256f, 370f, overlayColors[0], overlayColors[1], android.graphics.Shader.TileMode.CLAMP)
-                } else {
-                    val p = when (backgroundDirection.coerceIn(0, 3)) {
-                        1 -> floatArrayOf(0f, 256f, 512f, 256f)
-                        2 -> floatArrayOf(256f, 0f, 256f, 512f)
-                        3 -> floatArrayOf(512f, 0f, 0f, 512f)
-                        else -> floatArrayOf(0f, 0f, 512f, 512f)
-                    }
-                    android.graphics.LinearGradient(p[0], p[1], p[2], p[3], overlayColors[0], overlayColors[1], android.graphics.Shader.TileMode.CLAMP)
-                }
-                bgCanvas.drawPaint(android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { shader = overlayShader })
-            }
-
             FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
-                check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "自适应图标背景层生成失败" }
+                check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "透明图标背景生成失败" }
             }
-
-            // Flatten both layers for launchers that do not support adaptive icons.
-            val flattened = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
-            try {
-                val flatCanvas = android.graphics.Canvas(flattened)
-                flatCanvas.drawBitmap(background, 0f, 0f, null)
-                val sourceForeground = readBitmapFromFile(File(drawableDir, "ic_launcher_foreground.png"))
-                try { flatCanvas.drawBitmap(sourceForeground, 0f, 0f, null) }
-                finally { sourceForeground.recycle() }
-                FileOutputStream(File(fallbackDir, "ic_launcher.png")).use {
-                    check(flattened.compress(Bitmap.CompressFormat.PNG, 100, it)) { "传统 PNG 图标生成失败" }
-                }
-            } finally { flattened.recycle() }
-        } finally { background.recycle() }
+        } finally {
+            background.recycle()
+        }
 
         File(adaptiveDir, "ic_launcher.xml").writeText(
             """<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>""",
