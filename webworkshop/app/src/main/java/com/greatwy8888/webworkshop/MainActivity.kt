@@ -448,7 +448,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         form.addView(imagePreview(iconUri, "图标前景层（自动去除边缘白底）", dp(112), "icon"))
         form.addView(label("图标背景层"))
         form.addView(TextView(this).apply {
-            text = "可选择透明或纯色背景，也可以上传一张背景图片；背景图片会铺满图标画布。"
+            text = "支持纯色、线性渐变、径向渐变及自定义背景图片；前景可叠加阴影、发光和描边效果。颜色可填写 #RRGGBB 或 #AARRGGBB。"
             textSize = 12f; setTextColor(Color.rgb(105, 124, 142))
         })
         fun addColorField(title: String, key: String, defaultValue: String): EditText {
