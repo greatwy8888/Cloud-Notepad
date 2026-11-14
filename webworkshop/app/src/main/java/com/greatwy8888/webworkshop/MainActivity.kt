@@ -41,6 +41,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
     private var historyDialog: AlertDialog? = null
     private var activationInProgress = false
+    private var homeScrollView: ScrollView? = null
+    private var savedHomeScrollY = 0
+    private var previewPageUrl: String? = null
 
     private val htmlPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -565,6 +568,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
 
     private fun showHome() {
+        homeScrollView?.let { savedHomeScrollY = it.scrollY }
         showingPreview = false
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -587,6 +591,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         root.addView(header, LinearLayout.LayoutParams(-1, dp(52)))
 
         val scroll = ScrollView(this)
+        homeScrollView = scroll
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(18))
@@ -744,6 +749,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             gravity = android.view.Gravity.CENTER_HORIZONTAL
         })
         setContentView(root)
+        scroll.post { scroll.scrollTo(0, savedHomeScrollY.coerceAtLeast(0)) }
     }
 
 
@@ -1032,22 +1038,93 @@ class MainActivity : androidx.activity.ComponentActivity() {
             setBackgroundColor(Color.rgb(242, 247, 252))
             setPadding(dp(10), dp(10), dp(10), dp(10))
         }
-        page.addView(button("‹  返回网页工坊") { showHome() }, LinearLayout.LayoutParams(-1, dp(48)))
+        val toolbar = android.widget.FrameLayout(this)
+        toolbar.addView(button("‹  返回网页工坊") { showHome() },
+            android.widget.FrameLayout.LayoutParams(-1, dp(46), android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL).apply {
+                rightMargin = dp(58)
+            })
+        val refreshButton = TextView(this).apply {
+            text = "↻"
+            textSize = 27f
+            gravity = android.view.Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(43, 83, 122))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(Color.rgb(232, 241, 250))
+                setStroke(dp(1), Color.rgb(213, 228, 242))
+            }
+            elevation = dp(2).toFloat()
+            isClickable = true
+            isFocusable = true
+            contentDescription = "刷新并清理网页"
+            setOnClickListener { refreshPreviewPage() }
+        }
+        toolbar.addView(refreshButton, android.widget.FrameLayout.LayoutParams(dp(46), dp(46),
+            android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL))
+        page.addView(toolbar, LinearLayout.LayoutParams(-1, dp(50)))
         page.addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
+        var pullStartY = 0f
+        var pullStartX = 0f
+        webView.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    pullStartY = event.rawY
+                    pullStartX = event.rawX
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    val dy = event.rawY - pullStartY
+                    val dx = event.rawX - pullStartX
+                    if (dy > dp(88) && kotlin.math.abs(dx) < dp(70) && webView.scrollY <= 0) {
+                        refreshPreviewPage()
+                    }
+                }
+            }
+            false
+        }
         setContentView(page)
         if (mode == "html") {
             val html = localHtml
             if (html.isNullOrBlank()) {
                 Toast.makeText(this, "请先选择 HTML 文件", Toast.LENGTH_SHORT).show()
                 showHome()
-            } else webView.loadDataWithBaseURL(localHtmlBaseUrl ?: "file:///android_asset/", html, "text/html", "UTF-8", null)
+            } else {
+                previewPageUrl = null
+                webView.loadDataWithBaseURL(localHtmlBaseUrl ?: "file:///android_asset/", html, "text/html", "UTF-8", null)
+            }
         } else {
             val url = address.text.toString().trim()
             if (!url.startsWith("https://") && !url.startsWith("http://")) {
                 Toast.makeText(this, "请输入完整网址", Toast.LENGTH_SHORT).show()
                 showHome()
-            } else webView.loadUrl(url)
+            } else {
+                previewPageUrl = url
+                webView.loadUrl(url)
+            }
         }
+    }
+
+    private fun refreshPreviewPage() {
+        if (!::webView.isInitialized) return
+        val currentUrl = webView.url?.takeIf { it != "about:blank" } ?: previewPageUrl
+        webView.stopLoading()
+        webView.clearHistory()
+        webView.clearFormData()
+        webView.clearCache(true)
+        if (mode == "html") {
+            val html = localHtml
+            if (!html.isNullOrBlank()) {
+                webView.loadDataWithBaseURL(localHtmlBaseUrl ?: "file:///android_asset/", html, "text/html", "UTF-8", null)
+            } else {
+                webView.loadUrl("about:blank")
+            }
+        } else if (!currentUrl.isNullOrBlank()) {
+            previewPageUrl = currentUrl
+            webView.loadUrl(currentUrl)
+        } else {
+            webView.loadUrl("about:blank")
+        }
+        Toast.makeText(this, "网页已刷新，缓存和表单历史已清理", Toast.LENGTH_SHORT).show()
     }
 
     @Deprecated("Deprecated in Android")
