@@ -112,7 +112,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     iconUri = savedUri
                     prefs.edit().putString("icon_uri", savedUri.toString()).apply()
                     showHome()
-                    status.text = "应用图标前景层已保存，已更新预览"
+                    status.text = "APP 图标图片已保存"
                 } else {
                     splashUri = savedUri
                     prefs.edit().putString("splash_uri", savedUri.toString()).apply()
@@ -650,7 +650,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
             localBase = prefs.getString("local_html_base", null),
             iconUri = iconUri,
             splashUri = splashUri,
-            iconBackgroundUri = iconBackgroundUri,
             projectIdentity = if (mode == "url") "url:" + url.trim() else
                 prefs.getString("local_project_identity", "") ?: ""
         )
