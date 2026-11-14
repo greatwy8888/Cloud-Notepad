@@ -17,6 +17,7 @@ import kotlin.math.min
  * Manual square crop surface. It never applies filters, corner rounding, background,
  * shadows, or color changes; it only exports the user-positioned square selection.
  */
+// Square, pixel-preserving manual crop editor used by the complete icon mode.
 class IconCropView(context: Context, private val source: Bitmap) : View(context) {
     private val imagePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
