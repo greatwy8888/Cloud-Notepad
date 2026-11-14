@@ -5,6 +5,7 @@ plugins {
 
 android {
     namespace = "com.greatwy8888.webworkshop"
+    buildFeatures { buildConfig = true }
     compileSdk = 35
 
     defaultConfig {
