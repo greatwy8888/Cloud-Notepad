@@ -322,7 +322,9 @@ object ApkGenerator {
         require(maxX >= minX && maxY >= minY) { "图标背景处理失败：没有识别到主体图案" }
         val cropped = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
         val result = Bitmap.createBitmap(cropped, minX, minY, maxX - minX + 1, maxY - minY + 1)
-        cropped.recycle()
+        // Android may return the original bitmap when the crop covers the full image.
+        // Recycling 'cropped' unconditionally would then recycle 'result' as well.
+        if (result !== cropped) cropped.recycle()
         return result
     }
 
