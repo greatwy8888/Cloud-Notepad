@@ -63,22 +63,33 @@ async function ensureLicenseSchema(db) {
   `).run();
 }
 
-function adminAuthorized(req, env) {
+function adminAuthorizationError(req, env) {
   const configured = String(env.WEBWORKSHOP_ADMIN_KEY || "");
+  if (configured.length < 32) {
+    return "Cloudflare Worker 端的 WEBWORKSHOP_ADMIN_KEY 未配置或长度不足 32 个字符。请检查 GitHub 仓库 Secret，并重新运行授权服务部署工作流。";
+  }
   // Admin keys may contain Unicode. Headers only accept ISO-8859-1 byte strings,
   // so the browser sends the UTF-8 bytes as lowercase hexadecimal ASCII.
   const encoded = String(req.headers.get("x-webworkshop-admin-key-utf8") || "");
-  if (configured.length < 32 || !/^(?:[0-9a-f]{2})+$/.test(encoded)) return false;
+  if (!/^(?:[0-9a-f]{2})+$/.test(encoded)) {
+    return "管理员密钥未正确提交，请清空输入框后重新输入。";
+  }
   const bytes = new Uint8Array(encoded.match(/../g).map(part => parseInt(part, 16)));
   const supplied = new TextDecoder().decode(bytes);
-  return supplied.length === configured.length && supplied === configured;
+  if (supplied.length !== configured.length || supplied !== configured) {
+    return "输入的管理员密钥与 Cloudflare Worker 当前配置不一致。请确认输入的是 GitHub Secret：WEBWORKSHOP_ADMIN_KEY 的完整原值（至少 32 个字符），注意不要多空格或换行。";
+  }
+  return "";
+}
+function adminAuthorized(req, env) {
+  return !adminAuthorizationError(req, env);
 }
 
 async function handleAdmin(req, env, url) {
   if (url.pathname === "/admin/webworkshop-licenses.js" && req.method === "GET") {
     return new Response(ADMIN_SCRIPT, { headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" } });
   }
-  if (!adminAuthorized(req, env)) return reply({ error: "管理员密钥错误或尚未配置" }, 401);
+  if (!adminAuthorized(req, env)) return reply({ error: adminAuthorizationError(req, env) }, 401);
 
   if (url.pathname === "/api/webworkshop/admin/create" && req.method === "POST") {
     let body;
