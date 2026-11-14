@@ -295,12 +295,7 @@ object ApkGenerator {
                 insetLeft = (viewport - imageWidth) / 2f
                 insetRight = insetLeft
             }
-            val insetXml = "<inset xmlns:android=\\"http://schemas.android.com/apk/res/android\\" " +
-                "android:drawable=\\"@drawable/ic_launcher_preview\\" " +
-                "android:insetLeft=\\"$insetLeft" + "dp\\" " +
-                "android:insetTop=\\"$insetTop" + "dp\\" " +
-                "android:insetRight=\\"$insetRight" + "dp\\" " +
-                "android:insetBottom=\\"$insetBottom" + "dp\\"/>"
+            val insetXml = """<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/ic_launcher_preview" android:insetLeft="${insetLeft}dp" android:insetTop="${insetTop}dp" android:insetRight="${insetRight}dp" android:insetBottom="${insetBottom}dp"/>"""
             File(drawableDir, "ic_launcher_foreground.png").delete()
             File(drawableDir, "ic_launcher_foreground.xml").writeText(insetXml, Charsets.UTF_8)
 
