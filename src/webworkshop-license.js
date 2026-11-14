@@ -165,6 +165,9 @@ export async function handleWebWorkshopLicenseRequest(req, env) {
   if (url.pathname === "/admin/webworkshop-licenses" && req.method === "GET") {
     return new Response(ADMIN_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
   }
+  if (url.pathname === "/admin/webworkshop-licenses.js" && req.method === "GET") {
+    return new Response(ADMIN_SCRIPT, { headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" } });
+  }
   if (!url.pathname.startsWith("/api/webworkshop/")) return null;
   if (!env.DB) return reply({ error: "Worker 的 D1 数据库绑定 DB 未配置" }, 503);
   await ensureLicenseSchema(env.DB);
