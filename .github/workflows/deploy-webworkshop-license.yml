@@ -32,10 +32,12 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const source = fs.readFileSync('src/webworkshop-license.js', 'utf8');
-          const html = source.match(/const ADMIN_HTML = \x60([\\s\\S]*?)\x60;/)?.[1];
-          if (!html) throw new Error('ADMIN_HTML template not found');
-          const script = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
-          if (!script) throw new Error('Admin page script not found');
+          const htmlStart = source.indexOf('const ADMIN_HTML = `');
+          if (htmlStart < 0) throw new Error('ADMIN_HTML template not found');
+          const scriptStart = source.indexOf('<script>', htmlStart);
+          const scriptEnd = source.indexOf('</script>', scriptStart);
+          if (scriptStart < 0 || scriptEnd < 0) throw new Error('Admin page script not found');
+          const script = source.slice(scriptStart + 8, scriptEnd);
           fs.writeFileSync('/tmp/webworkshop-admin.js', script);
           NODE
           node --check /tmp/webworkshop-admin.js
