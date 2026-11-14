@@ -36,7 +36,9 @@ object ApkGenerator {
         val localBase: String?,
         val iconUri: Uri?,
         val splashUri: Uri?,
-        val projectIdentity: String
+        val projectIdentity: String,
+        val iconBackgroundUri: Uri? = null,
+        val iconBackgroundColor: String = "#00000000"
     )
 
     fun packageNameFor(mode: String, projectIdentity: String): String {
@@ -169,7 +171,7 @@ object ApkGenerator {
 
             stage = "处理自定义图片"
             request.iconUri?.let {
-                replaceImage(context, it, File(decoded, "res/drawable/ic_webworkshop.xml"), 512, 512, removeWhiteBackground = true)
+                createAdaptiveIconResources(context, decoded, it, request.iconBackgroundUri, request.iconBackgroundColor)
             }
             request.splashUri?.let {
                 replaceImage(context, it, File(decoded, "res/drawable/splash.xml"), 1080, 1920)
@@ -218,6 +220,106 @@ object ApkGenerator {
             .setV3SigningEnabled(true)
             .build()
             .sign()
+    }
+
+    private fun createAdaptiveIconResources(
+        context: Context,
+        decoded: File,
+        iconUri: Uri,
+        backgroundUri: Uri?,
+        backgroundColor: String
+    ) {
+        val drawableDir = File(decoded, "res/drawable").apply { mkdirs() }
+        val valuesDir = File(decoded, "res/values").apply { mkdirs() }
+        val adaptiveDir = File(decoded, "res/mipmap-anydpi-v26").apply { mkdirs() }
+        val fallbackDir = File(decoded, "res/mipmap-mdpi").apply { mkdirs() }
+
+        val original = readBitmap(context, iconUri)
+        val extracted = try { removeNearWhiteEdgeBackground(original) } finally { original.recycle() }
+        val foreground = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        try {
+            val canvas = android.graphics.Canvas(foreground)
+            // Keep the subject inside Android's adaptive-icon safe zone (about 66% of the canvas).
+            val safeSize = 512f * 0.66f
+            val scale = minOf(safeSize / extracted.width, safeSize / extracted.height)
+            val w = extracted.width * scale
+            val h = extracted.height * scale
+            val left = (512f - w) / 2f
+            val top = (512f - h) / 2f
+            canvas.drawBitmap(extracted, null, android.graphics.RectF(left, top, left + w, top + h),
+                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
+            FileOutputStream(File(drawableDir, "ic_launcher_foreground.png")).use {
+                check(foreground.compress(Bitmap.CompressFormat.PNG, 100, it)) { "自适应图标前景层生成失败" }
+            }
+
+            val color = try { Color.parseColor(backgroundColor) } catch (_: Exception) { Color.TRANSPARENT }
+            val background = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+            try {
+                val bgCanvas = android.graphics.Canvas(background)
+                if (backgroundUri == null) {
+                    bgCanvas.drawColor(color)
+                } else {
+                    val bgSource = readBitmap(context, backgroundUri)
+                    try {
+                        val scale = maxOf(512f / bgSource.width, 512f / bgSource.height)
+                        val w = bgSource.width * scale
+                        val h = bgSource.height * scale
+                        val src = android.graphics.RectF((512f - w) / 2f, (512f - h) / 2f,
+                            (512f + w) / 2f, (512f + h) / 2f)
+                        bgCanvas.drawBitmap(bgSource, null, src,
+                            android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
+                    } finally { bgSource.recycle() }
+                }
+                val bgFile = File(drawableDir, "ic_launcher_background.png")
+                FileOutputStream(bgFile).use {
+                    check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "自适应图标背景层生成失败" }
+                }
+
+                // Also create a flattened legacy PNG fallback for launchers that do not use adaptive layers.
+                val flattened = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+                try {
+                    val flatCanvas = android.graphics.Canvas(flattened)
+                    flatCanvas.drawBitmap(background, 0f, 0f, null)
+                    flatCanvas.drawBitmap(foreground, 0f, 0f, null)
+                    FileOutputStream(File(fallbackDir, "ic_launcher.png")).use {
+                        check(flattened.compress(Bitmap.CompressFormat.PNG, 100, it)) { "传统 PNG 图标生成失败" }
+                    }
+                } finally { flattened.recycle() }
+            } finally { background.recycle() }
+        } finally {
+            foreground.recycle()
+            extracted.recycle()
+        }
+
+        val backgroundRef = if (backgroundUri != null) {
+            "@drawable/ic_launcher_background"
+        } else {
+            File(valuesDir, "ic_launcher_colors.xml").writeText(
+                """<resources><color name="ic_launcher_background">$backgroundColor</color></resources>""",
+                Charsets.UTF_8
+            )
+            "@color/ic_launcher_background"
+        }
+        File(adaptiveDir, "ic_launcher.xml").writeText(
+            """<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="$backgroundRef"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>""",
+            Charsets.UTF_8
+        )
+
+        val manifest = File(decoded, "AndroidManifest.xml")
+        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        val document = factory.newDocumentBuilder().parse(manifest)
+        val app = document.getElementsByTagName("application").item(0) as Element
+        app.setAttributeNS(ANDROID_NS, "android:icon", "@mipmap/ic_launcher")
+        TransformerFactory.newInstance().newTransformer().apply {
+            setOutputProperty(OutputKeys.ENCODING, "UTF-8")
+        }.transform(DOMSource(document), StreamResult(manifest))
+    }
+
+    private fun readBitmap(context: Context, uri: Uri): Bitmap {
+        val input = if (uri.scheme == "file") File(uri.path ?: "").takeIf { it.isFile }?.inputStream()
+            else context.contentResolver.openInputStream(uri)
+        return input?.use { BitmapFactory.decodeStream(it) }
+            ?: throw IllegalStateException("无法读取图标图片：$uri")
     }
 
     private fun replaceImage(context: Context, uri: Uri, oldResource: File, maxWidth: Int, maxHeight: Int, removeWhiteBackground: Boolean = false) {
