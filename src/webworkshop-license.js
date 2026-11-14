@@ -16,7 +16,7 @@ async function digest(value) {
 }
 
 function normalizeSerial(value) {
-  return String(value || "").toUpperCase().replace(/[^A-Z2-7]/g, "");
+  return String(value || "").toUpperCase().replace(/[^A-Z2-9]/g, "");
 }
 
 function makeSerial() {
@@ -86,7 +86,7 @@ async function handleAdmin(req, env, url) {
         "INSERT INTO webworkshop_licenses(id,serial_hash,serial_hint,product_id,build_id,created_at) VALUES(?,?,?,?,?,?)"
       ).bind(id, serialHash, serial.slice(0, 7) + "…" + serial.slice(-4), "webworkshop", buildId, createdAt));
     }
-    await env.DB.batch(statements);
+    // D1 batch requests are chunked to stay within practical statement limits.\n    for (let i = 0; i < statements.length; i += 100) {\n      await env.DB.batch(statements.slice(i, i + 100));\n    }
     // Plaintext serials are returned only once and are never stored in the database.
     return reply({ ok: true, product_id: "webworkshop", build_id: buildId, count, serials: issued.map(x => x.serial) });
   }
