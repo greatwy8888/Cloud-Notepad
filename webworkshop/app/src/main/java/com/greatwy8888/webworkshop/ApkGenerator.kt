@@ -316,22 +316,24 @@ object ApkGenerator {
                     fallback.outputStream().use { output -> input.copyTo(output) }
                 }
 
-                // Adaptive icons use a 108dp viewport. Add transparent insets only in
-                // the wrapper drawable; the original image file itself remains untouched.
+                // Adaptive icons use a 108dp viewport and a roughly 72dp safe zone.
+                // Keep the entire original image inside that safe zone so common launcher
+                // masks do not cut off its edges. The source bytes remain untouched.
                 val viewport = 108f
+                val safeSize = 72f
                 val aspect = bounds.outWidth.toFloat() / bounds.outHeight.toFloat()
-                var insetLeft = 0f
-                var insetRight = 0f
-                var insetTop = 0f
-                var insetBottom = 0f
+                var insetLeft = (viewport - safeSize) / 2f
+                var insetRight = insetLeft
+                var insetTop = (viewport - safeSize) / 2f
+                var insetBottom = insetTop
                 if (aspect > 1f) {
-                    val verticalInset = ((viewport - viewport / aspect) / 2f).coerceAtLeast(0f)
-                    insetTop = verticalInset
-                    insetBottom = verticalInset
+                    val imageHeight = safeSize / aspect
+                    insetTop = (viewport - imageHeight) / 2f
+                    insetBottom = insetTop
                 } else if (aspect < 1f) {
-                    val horizontalInset = ((viewport - viewport * aspect) / 2f).coerceAtLeast(0f)
-                    insetLeft = horizontalInset
-                    insetRight = horizontalInset
+                    val imageWidth = safeSize * aspect
+                    insetLeft = (viewport - imageWidth) / 2f
+                    insetRight = insetLeft
                 }
                 val insetXml = "<inset xmlns:android=\"http://schemas.android.com/apk/res/android\" " +
                     "android:drawable=\"@drawable/ic_launcher_original\" " +
