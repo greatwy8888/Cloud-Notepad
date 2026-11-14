@@ -71,3 +71,5 @@ jobs:
           set -euo pipefail
           printf '%s' "$WEBWORKSHOP_ADMIN_KEY" | npx --yes wrangler@4 secret put WEBWORKSHOP_ADMIN_KEY
           npx --yes wrangler@4 deploy
+
+# Deployment rerun after updating repository secrets.
