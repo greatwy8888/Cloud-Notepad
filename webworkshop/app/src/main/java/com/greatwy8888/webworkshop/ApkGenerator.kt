@@ -232,7 +232,9 @@ object ApkGenerator {
         val adaptiveDir = File(decoded, "res/mipmap-anydpi-v26").apply { mkdirs() }
         val fallbackDir = File(decoded, "res/mipmap-mdpi").apply { mkdirs() }
 
-        if (iconFitMode == "fit") {
+        if (iconFitMode == "manual" || iconFitMode == "fit") {
+            // Manual mode retains the previous complete-mode behavior exactly:
+            // user-positioned square pixel crop, with no additional image effects.
             // In complete mode the user has already positioned and cropped the source
             // manually in the square editor. Preserve those PNG pixels exactly: no
             // automatic crop, rounding, tint, shadow, background, or filtering.
@@ -264,6 +266,85 @@ object ApkGenerator {
 
             // Adaptive icon background remains fully transparent. The launcher applies
             // its own platform mask; the app does not alter the uploaded crop.
+            val background = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            try {
+                FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
+                    check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "透明图标背景生成失败" }
+                }
+            } finally {
+                background.recycle()
+            }
+        } else if (iconFitMode == "original") {
+            // Copy the uploaded image bytes unchanged. An inset drawable preserves its
+            // aspect ratio in Android's launcher viewport without app-side crop/stretch.
+            val sourceFile = if (iconUri.scheme == "file") {
+                File(iconUri.path ?: "").takeIf { it.isFile }
+                    ?: throw IllegalStateException("原始图标文件不存在")
+            } else {
+                File(context.cacheDir, "webworkshop-original-icon.img").also { copied ->
+                    context.contentResolver.openInputStream(iconUri)?.use { input ->
+                        copied.outputStream().use { output -> input.copyTo(output) }
+                    } ?: throw IllegalStateException("无法读取原始图标")
+                }
+            }
+            try {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                sourceFile.inputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
+                require(bounds.outWidth > 0 && bounds.outHeight > 0) { "原始图标图片格式无法识别" }
+                val extension = when (bounds.outMimeType?.lowercase()) {
+                    "image/png" -> "png"
+                    "image/jpeg" -> "jpg"
+                    "image/webp" -> "webp"
+                    else -> throw IllegalArgumentException("原始模式仅支持 PNG、JPG 或 WebP 图片")
+                }
+
+                val rawDir = File(decoded, "res/drawable-nodpi").apply { mkdirs() }
+                rawDir.listFiles()?.filter { it.name.startsWith("ic_launcher_original.") }?.forEach { it.delete() }
+                val rawDrawable = File(rawDir, "ic_launcher_original.$extension")
+                sourceFile.inputStream().use { input ->
+                    rawDrawable.outputStream().use { output -> input.copyTo(output) }
+                }
+
+                // Remove pre-existing density-specific icons so a stale processed image
+                // cannot override the exact original fallback resource.
+                decoded.walkTopDown()
+                    .filter { it.isFile && it.parentFile?.name?.startsWith("mipmap-") == true &&
+                        it.name.startsWith("ic_launcher.") && it.name != "ic_launcher.xml" }
+                    .forEach { it.delete() }
+                val fallback = File(fallbackDir, "ic_launcher.$extension")
+                sourceFile.inputStream().use { input ->
+                    fallback.outputStream().use { output -> input.copyTo(output) }
+                }
+
+                // Adaptive icons use a 108dp viewport. Add transparent insets only in
+                // the wrapper drawable; the original image file itself remains untouched.
+                val viewport = 108f
+                val aspect = bounds.outWidth.toFloat() / bounds.outHeight.toFloat()
+                var insetLeft = 0f
+                var insetRight = 0f
+                var insetTop = 0f
+                var insetBottom = 0f
+                if (aspect > 1f) {
+                    val verticalInset = ((viewport - viewport / aspect) / 2f).coerceAtLeast(0f)
+                    insetTop = verticalInset
+                    insetBottom = verticalInset
+                } else if (aspect < 1f) {
+                    val horizontalInset = ((viewport - viewport * aspect) / 2f).coerceAtLeast(0f)
+                    insetLeft = horizontalInset
+                    insetRight = horizontalInset
+                }
+                val insetXml = "<inset xmlns:android=\"http://schemas.android.com/apk/res/android\" " +
+                    "android:drawable=\"@drawable/ic_launcher_original\" " +
+                    "android:insetLeft=\"" + insetLeft + "dp\" " +
+                    "android:insetTop=\"" + insetTop + "dp\" " +
+                    "android:insetRight=\"" + insetRight + "dp\" " +
+                    "android:insetBottom=\"" + insetBottom + "dp\"/>"
+                File(drawableDir, "ic_launcher_foreground.png").delete()
+                File(drawableDir, "ic_launcher_foreground.xml").writeText(insetXml, Charsets.UTF_8)
+            } finally {
+                if (sourceFile.parentFile == context.cacheDir) sourceFile.delete()
+            }
+
             val background = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
             try {
                 FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
