@@ -27,17 +27,14 @@ jobs:
           node --check src/index.js
           node --check src/webworkshop-license.js
 
-      - name: Check embedded admin page JavaScript
+      - name: Check external admin page JavaScript
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const source = fs.readFileSync('src/webworkshop-license.js', 'utf8');
-          const htmlStart = source.indexOf('const ADMIN_HTML = `');
-          if (htmlStart < 0) throw new Error('ADMIN_HTML template not found');
-          const scriptStart = source.indexOf('<script>', htmlStart);
-          const scriptEnd = source.indexOf('</script>', scriptStart);
-          if (scriptStart < 0 || scriptEnd < 0) throw new Error('Admin page script not found');
-          const script = source.slice(scriptStart + 8, scriptEnd);
+          const match = source.match(/const ADMIN_SCRIPT = (".*");/);
+          if (!match) throw new Error('ADMIN_SCRIPT resource not found');
+          const script = JSON.parse(match[1]);
           fs.writeFileSync('/tmp/webworkshop-admin.js', script);
           NODE
           node --check /tmp/webworkshop-admin.js
