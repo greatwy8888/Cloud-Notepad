@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -155,10 +156,16 @@ class IconCropView(context: Context, private val source: Bitmap) : View(context)
         require(safeSide > 0f) { "裁切区域无效" }
         val result = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
+        val sourceRect = Rect(
+            sourceLeft.toInt().coerceIn(0, source.width - 1),
+            sourceTop.toInt().coerceIn(0, source.height - 1),
+            (sourceLeft + safeSide).toInt().coerceIn(1, source.width),
+            (sourceTop + safeSide).toInt().coerceIn(1, source.height)
+        )
         canvas.drawBitmap(
             source,
-            RectF(sourceLeft, sourceTop, sourceLeft + safeSide, sourceTop + safeSide),
-            RectF(0f, 0f, outputSize.toFloat(), outputSize.toFloat()),
+            sourceRect,
+            Rect(0, 0, outputSize, outputSize),
             imagePaint
         )
         return result
