@@ -43,7 +43,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 prefs.edit().putString("local_html_path", htmlFile.absolutePath)
                     .putString("local_project_identity", "file:" + it.toString()).apply()
                 mode = "html"
-                status.text = "已选择本地 HTML：${it.lastPathSegment ?: "页面"}"
+                val displayName = it.lastPathSegment?.substringAfterLast("/") ?: "页面.html"
+                prefs.edit().putString("local_html_name", displayName).putString("mode", "html").apply()
+                status.text = "已选择本地 HTML：$displayName"
             } catch (e: Exception) {
                 status.text = "读取失败：${e.localizedMessage ?: "无法读取文件"}"
             }
@@ -66,7 +68,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     .putString("local_html_base", localHtmlBaseUrl)
                     .putString("local_project_identity", "tree:" + it.toString()).apply()
                 mode = "html"
-                status.text = "网页文件夹已导入，资源文件一并复制"
+                prefs.edit().putString("local_html_name", entry.name).putString("mode", "html").apply()
+                status.text = "已导入网页文件夹：${entry.name}"
             } catch (e: Exception) {
                 status.text = "导入失败：${e.localizedMessage ?: "请检查文件夹内容"}"
             }
@@ -173,8 +176,20 @@ class MainActivity : androidx.activity.ComponentActivity() {
         super.onCreate(savedInstanceState)
         // A fresh launch starts with a clean form. Keep build history, generated
         // APKs, per-project signing keys, package mappings and version counters.
-        resetTransientOptions()
+        if (savedInstanceState == null) resetTransientOptions() else restoreTransientOptions()
         showHome()
+    }
+
+    private fun restoreTransientOptions() {
+        mode = prefs.getString("mode", "url") ?: "url"
+        val path = prefs.getString("local_html_path", null)
+        if (!path.isNullOrBlank() && File(path).isFile) {
+            localHtml = File(path).readText()
+            localHtmlBaseUrl = prefs.getString("local_html_base", null)
+                ?: "file://${File(path).parentFile?.absolutePath}/"
+        }
+        iconUri = prefs.getString("icon_uri", null)?.let { Uri.parse(it) }
+        splashUri = prefs.getString("splash_uri", null)?.let { Uri.parse(it) }
     }
 
     private fun resetTransientOptions() {
@@ -187,6 +202,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
             .remove("local_html_path")
             .remove("local_html_base")
             .remove("local_project_identity")
+            .remove("local_html_name")
+            .remove("mode")
             .apply()
         iconUri = null
         splashUri = null
@@ -352,18 +369,43 @@ class MainActivity : androidx.activity.ComponentActivity() {
         val urlMode = RadioButton(this).apply { text = "输入网址"; id = View.generateViewId(); isChecked = mode == "url" }
         val htmlMode = RadioButton(this).apply { text = "本地 HTML"; id = View.generateViewId(); isChecked = mode == "html" }
         tabs.addView(urlMode); tabs.addView(htmlMode)
-        tabs.setOnCheckedChangeListener { _, checked -> mode = if (checked == htmlMode.id) "html" else "url" }
+        tabs.setOnCheckedChangeListener { _, checked ->
+            mode = if (checked == htmlMode.id) "html" else "url"
+            prefs.edit().putString("mode", mode).apply()
+        }
         form.addView(tabs)
 
         form.addView(label("网址"))
         address = EditText(this).apply {
             hint = "https://www.example.com"; isSingleLine = true; textSize = 15f
-            setText(prefs.getString("last_url", ""))
+            setText(prefs.getString("last_url", "https://")?.ifBlank { "https://" } ?: "https://")
             setPadding(dp(12), dp(10), dp(12), dp(10))
             background = roundedBackground(Color.rgb(248, 251, 254), Color.rgb(220, 230, 240))
         }
+        address.addTextChangedListener(object : android.text.TextWatcher {
+            private var fixing = false
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (fixing || s == null) return
+                val raw = s.toString().trim()
+                val normalized = when {
+                    raw.isEmpty() -> "https://"
+                    raw.startsWith("https://", true) -> "https://" + raw.substring(8)
+                    raw.startsWith("http://", true) -> "https://" + raw.substring(7)
+                    else -> "https://$raw"
+                }
+                if (normalized != raw) {
+                    fixing = true
+                    address.setText(normalized)
+                    address.setSelection(address.text.length)
+                    fixing = false
+                }
+                prefs.edit().putString("last_url", normalized).apply()
+            }
+        })
         form.addView(address, LinearLayout.LayoutParams(-1, dp(52)))
-        form.addView(button("选择本地 HTML 文件") {
+        form.addView(button(prefs.getString("local_html_name", null)?.let { "已选择 HTML：$it" } ?: "选择本地 HTML 文件") {
             htmlPicker.launch(arrayOf("text/html", "application/xhtml+xml"))
         }, LinearLayout.LayoutParams(-1, dp(48)).apply {
             topMargin = dp(8); bottomMargin = dp(7)
@@ -381,6 +423,13 @@ class MainActivity : androidx.activity.ComponentActivity() {
             setPadding(dp(12), dp(10), dp(12), dp(10))
             background = roundedBackground(Color.rgb(248, 251, 254), Color.rgb(220, 230, 240))
         }
+        appName.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                prefs.edit().putString("app_name", s?.toString().orEmpty()).apply()
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
         form.addView(appName, LinearLayout.LayoutParams(-1, dp(52)))
 
         form.addView(label("应用图标与启动画面"))
@@ -403,7 +452,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(7); bottomMargin = dp(8) })
 
         status = TextView(this).apply {
-            text = "请选择网址或本地 HTML"
+            text = prefs.getString("local_html_name", null)?.let { "已选择本地 HTML：$it" } ?: "请选择网址或本地 HTML"
             textSize = 12f; setTextColor(Color.rgb(38, 130, 105))
             setPadding(0, dp(12), 0, dp(8))
         }
