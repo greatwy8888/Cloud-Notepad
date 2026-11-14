@@ -228,13 +228,10 @@ object ApkGenerator {
         iconUri: Uri,
         iconFitMode: String
     ) {
-        val drawableDir = File(decoded, "res/drawable").apply { mkdirs() }
-        val adaptiveDir = File(decoded, "res/mipmap-anydpi-v26").apply { mkdirs() }
-        val fallbackDir = File(decoded, "res/mipmap-mdpi").apply { mkdirs() }
-
-        // Both supported modes use the exact bytes of the image shown in the preview:
-        // original mode points to the untouched upload; manual mode points to the user's
-        // exported pixel crop. No second crop, resampling, rounding, tint, shadow or filter.
+        // Do not use adaptive-icon foreground/background layers here. Android launchers
+        // apply their own adaptive viewport and mask to those layers, which was cropping
+        // the top/bottom of the preview and changing the apparent proportions.
+        // A single nodpi legacy bitmap is used instead, with the exact source file bytes.
         val sourceFile = if (iconUri.scheme == "file") {
             File(iconUri.path ?: "").takeIf { it.isFile }
                 ?: throw IllegalStateException("预览框中的图标文件不存在")
@@ -257,70 +254,39 @@ object ApkGenerator {
                 else -> throw IllegalArgumentException("图标仅支持 PNG、JPG 或 WebP 图片")
             }
 
-            val rawDir = File(decoded, "res/drawable-nodpi").apply { mkdirs() }
-            rawDir.listFiles()?.filter { it.name.startsWith("ic_launcher_preview.") }?.forEach { it.delete() }
-            val rawDrawable = File(rawDir, "ic_launcher_preview.$extension")
-            sourceFile.inputStream().use { input ->
-                rawDrawable.outputStream().use { output -> input.copyTo(output) }
-            }
-
-            // Clear stale density-specific launcher assets so an older processed icon
-            // cannot take precedence over the currently selected preview image.
+            // Remove every adaptive and density-specific launcher resource from the
+            // template so Android cannot select an old adaptive layer or stale icon.
             decoded.walkTopDown()
                 .filter { it.isFile && it.parentFile?.name?.startsWith("mipmap-") == true &&
-                    it.name.startsWith("ic_launcher") && it.name != "ic_launcher.xml" }
+                    (it.name.startsWith("ic_launcher") || it.name.startsWith("ic_launcher_round")) }
                 .forEach { it.delete() }
 
-            val fallback = File(fallbackDir, "ic_launcher.$extension")
+            val adaptiveXml = File(decoded, "res/mipmap-anydpi-v26/ic_launcher.xml")
+            adaptiveXml.delete()
+            File(decoded, "res/mipmap-anydpi-v26/ic_launcher_round.xml").delete()
+
+            // nodpi prevents Android resource-density selection from choosing a
+            // pre-scaled variant. The file is copied byte-for-byte: no crop, resize,
+            // stretch, background, padding, filter, shadow, or corner treatment.
+            val iconDir = File(decoded, "res/mipmap-nodpi").apply { mkdirs() }
+            iconDir.listFiles()?.filter {
+                it.name.startsWith("ic_launcher") || it.name.startsWith("ic_launcher_round")
+            }?.forEach { it.delete() }
+            val output = File(iconDir, "ic_launcher.$extension")
             sourceFile.inputStream().use { input ->
-                fallback.outputStream().use { output -> input.copyTo(output) }
-            }
-
-            // Android launchers impose their own icon viewport and mask. Keep the full
-            // source aspect ratio inside the adaptive safe area; the embedded image bytes
-            // remain identical to the preview source.
-            val viewport = 108f
-            val safeSize = 72f
-            val aspect = bounds.outWidth.toFloat() / bounds.outHeight.toFloat()
-            var insetLeft = (viewport - safeSize) / 2f
-            var insetRight = insetLeft
-            var insetTop = (viewport - safeSize) / 2f
-            var insetBottom = insetTop
-            if (aspect > 1f) {
-                val imageHeight = safeSize / aspect
-                insetTop = (viewport - imageHeight) / 2f
-                insetBottom = insetTop
-            } else if (aspect < 1f) {
-                val imageWidth = safeSize * aspect
-                insetLeft = (viewport - imageWidth) / 2f
-                insetRight = insetLeft
-            }
-            val insetXml = """<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/ic_launcher_preview" android:insetLeft="${insetLeft}dp" android:insetTop="${insetTop}dp" android:insetRight="${insetRight}dp" android:insetBottom="${insetBottom}dp"/>"""
-            File(drawableDir, "ic_launcher_foreground.png").delete()
-            File(drawableDir, "ic_launcher_foreground.xml").writeText(insetXml, Charsets.UTF_8)
-
-            val background = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-            try {
-                FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
-                    check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "透明图标背景生成失败" }
-                }
-            } finally {
-                background.recycle()
+                output.outputStream().use { target -> input.copyTo(target) }
             }
         } finally {
             if (sourceFile.parentFile == context.cacheDir) sourceFile.delete()
         }
-
-        File(adaptiveDir, "ic_launcher.xml").writeText(
-            """<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>""",
-            Charsets.UTF_8
-        )
 
         val manifest = File(decoded, "AndroidManifest.xml")
         val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         val document = factory.newDocumentBuilder().parse(manifest)
         val app = document.getElementsByTagName("application").item(0) as Element
         app.setAttributeNS(ANDROID_NS, "android:icon", "@mipmap/ic_launcher")
+        // Some launchers prefer roundIcon; point it to the same untouched bitmap.
+        app.setAttributeNS(ANDROID_NS, "android:roundIcon", "@mipmap/ic_launcher")
         TransformerFactory.newInstance().newTransformer().apply {
             setOutputProperty(OutputKeys.ENCODING, "UTF-8")
         }.transform(DOMSource(document), StreamResult(manifest))
