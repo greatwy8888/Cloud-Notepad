@@ -534,6 +534,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
         addColorField("背景颜色一", "icon_background_color", "#FF315C9B")
         addColorField("背景颜色二（渐变终点）", "icon_background_color2", "#FF8A45B8")
         form.addView(label("前景效果"))
+        addEffectSwitch("启用前景渐变染色", "icon_foreground_gradient_enabled")
+        addColorField("前景渐变颜色一", "icon_foreground_color", "#FFFFFFFF")
+        addColorField("前景渐变颜色二", "icon_foreground_color2", "#FFB8D9FF")
         addEffectSwitch("启用柔和阴影", "icon_shadow_enabled")
         addColorField("阴影颜色", "icon_shadow_color", "#99000000")
         addEffectSlider("阴影模糊", "icon_shadow_blur", 12, 32)
@@ -766,6 +769,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
             iconBackgroundColor2 = prefs.getString("icon_background_color2", "#FF8A45B8") ?: "#FF8A45B8",
             iconBackgroundGradient = prefs.getString("icon_background_gradient", "linear") ?: "linear",
             iconBackgroundDirection = prefs.getInt("icon_background_direction", 0),
+            iconForegroundGradientEnabled = prefs.getBoolean("icon_foreground_gradient_enabled", false),
+            iconForegroundColor = prefs.getString("icon_foreground_color", "#FFFFFFFF") ?: "#FFFFFFFF",
+            iconForegroundColor2 = prefs.getString("icon_foreground_color2", "#FFB8D9FF") ?: "#FFB8D9FF",
             iconShadowEnabled = prefs.getBoolean("icon_shadow_enabled", false),
             iconShadowColor = prefs.getString("icon_shadow_color", "#99000000") ?: "#99000000",
             iconShadowBlur = prefs.getInt("icon_shadow_blur", 12),
