@@ -320,6 +320,71 @@ class MainActivity : androidx.activity.ComponentActivity() {
         return panel
     }
 
+    private fun showIconCropEditor(sourceUri: Uri) {
+        try {
+            val bitmap = if (sourceUri.scheme == "file") {
+                BitmapFactory.decodeFile(sourceUri.path)
+            } else contentResolver.openInputStream(sourceUri)?.use { BitmapFactory.decodeStream(it) }
+                ?: throw IllegalStateException("无法解码图标图片")
+            if (bitmap == null) throw IllegalStateException("图片格式不受支持")
+            val cropView = IconCropView(this, bitmap)
+            val sizeGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
+            val size512 = RadioButton(this).apply { id = View.generateViewId(); text = "512×512" }
+            val size1024 = RadioButton(this).apply { id = View.generateViewId(); text = "1024×1024"; isChecked = true }
+            sizeGroup.addView(size512)
+            sizeGroup.addView(size1024)
+            val content = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(8), dp(18), dp(4))
+                addView(TextView(this@MainActivity).apply {
+                    text = "在方框内拖动图片调整位置，双指缩放。框外部分将被裁切；框内图像不添加任何自动效果。"
+                    textSize = 13f
+                    setTextColor(Color.rgb(83, 99, 116))
+                    setPadding(0, 0, 0, dp(10))
+                })
+                addView(cropView, LinearLayout.LayoutParams(-1, dp(300)))
+                addView(TextView(this@MainActivity).apply {
+                    text = "导出尺寸"
+                    textSize = 13f
+                    setTextColor(Color.rgb(83, 99, 116))
+                    setPadding(0, dp(12), 0, dp(2))
+                })
+                addView(sizeGroup)
+            }
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("完整模式 · 图标裁切")
+                .setView(content)
+                .setPositiveButton("应用裁切", null)
+                .setNegativeButton("取消") { _, _ -> bitmap.recycle() }
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    try {
+                        val outputSize = if (sizeGroup.checkedRadioButtonId == size512.id) 512 else 1024
+                        val cropped = cropView.exportBitmap(outputSize)
+                        val folder = File(filesDir, "custom_images").apply { mkdirs() }
+                        val output = File(folder, "app_icon_manual_crop.png")
+                        FileOutputStream(output).use { stream ->
+                            check(cropped.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "图标保存失败" }
+                        }
+                        cropped.recycle()
+                        iconUri = Uri.fromFile(output)
+                        prefs.edit().putString("icon_uri", iconUri.toString()).putString("icon_crop_size", outputSize.toString()).apply()
+                        bitmap.recycle()
+                        dialog.dismiss()
+                        showHome()
+                        status.text = "已应用 ${outputSize}×${outputSize} 手动裁切图标"
+                    } catch (e: Exception) {
+                        Toast.makeText(this, e.localizedMessage ?: "裁切失败", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            dialog.show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "打开图标编辑器失败：" + (e.localizedMessage ?: "图片读取失败"), Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun label(value: String) = TextView(this).apply {
         text = value; textSize = 14f; setTextColor(Color.rgb(49, 69, 89))
