@@ -2,6 +2,7 @@ package com.greatwy8888.webworkshop
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
