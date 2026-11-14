@@ -38,6 +38,7 @@ object ApkGenerator {
         val splashUri: Uri?,
         val projectIdentity: String,
         val iconBackgroundUri: Uri? = null,
+        val iconSingleImageMode: Boolean = false,
         val iconBackgroundColor: String = "#FF315C9B",
         val iconBackgroundColor2: String = "#FF8A45B8",
         val iconBackgroundGradient: String = "linear",
@@ -250,6 +251,7 @@ object ApkGenerator {
         decoded: File,
         iconUri: Uri,
         backgroundUri: Uri?,
+        singleImageMode: Boolean,
         backgroundColor: String,
         backgroundColor2: String,
         backgroundGradient: String,
@@ -275,12 +277,12 @@ object ApkGenerator {
             try { Color.parseColor(value.trim()) } catch (_: Exception) { fallback }
 
         val original = readBitmap(context, iconUri)
-        val extracted = try { removeNearWhiteEdgeBackground(original) } finally { original.recycle() }
+        val extracted = try { if (singleImageMode) original.copy(Bitmap.Config.ARGB_8888, false) else removeNearWhiteEdgeBackground(original) } finally { original.recycle() }
         val foreground = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
         try {
             val canvas = android.graphics.Canvas(foreground)
             // Keep the subject inside Android's adaptive-icon safe zone (about 66% of the canvas).
-            val safeSize = 512f * 0.66f
+            val safeSize = if (singleImageMode) 512f else 512f * 0.66f
             val scale = minOf(safeSize / extracted.width, safeSize / extracted.height)
             val w = extracted.width * scale
             val h = extracted.height * scale
@@ -291,7 +293,7 @@ object ApkGenerator {
 
             // Optional gradient recoloring uses SRC_ATOP, so the uploaded artwork's
             // transparent silhouette and alpha edges are preserved.
-            if (foregroundGradientEnabled) {
+            if (foregroundGradientEnabled && !singleImageMode) {
                 val fg1 = parseColor(foregroundColor, Color.WHITE)
                 val fg2 = parseColor(foregroundColor2, Color.rgb(184, 217, 255))
                 val points = when (backgroundDirection.coerceIn(0, 3)) {
@@ -337,9 +339,11 @@ object ApkGenerator {
                         }
                     }
 
-                    if (glowEnabled) drawMaskEffect(glowColor, glowBlur)
-                    if (shadowEnabled) drawMaskEffect(shadowColor, shadowBlur, 0f, 9f)
-                    if (outlineEnabled) drawMaskEffect(outlineColor, outlineBlur)
+                    if (!singleImageMode) {
+                        if (glowEnabled) drawMaskEffect(glowColor, glowBlur)
+                        if (shadowEnabled) drawMaskEffect(shadowColor, shadowBlur, 0f, 9f)
+                        if (outlineEnabled) drawMaskEffect(outlineColor, outlineBlur)
+                    }
                 } finally {
                     subjectMask.recycle()
                 }
@@ -361,7 +365,9 @@ object ApkGenerator {
         val background = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
         try {
             val bgCanvas = android.graphics.Canvas(background)
-            if (backgroundUri != null) {
+            if (singleImageMode) {
+                bgCanvas.drawColor(Color.TRANSPARENT)
+            } else if (backgroundUri != null) {
                 val bgSource = readBitmap(context, backgroundUri)
                 try {
                     val scale = maxOf(512f / bgSource.width, 512f / bgSource.height)
@@ -394,7 +400,7 @@ object ApkGenerator {
             }
 
             // When a background photo is supplied, lightly blend the chosen gradient over it.
-            if (backgroundUri != null && backgroundGradient != "solid") {
+            if (!singleImageMode && backgroundUri != null && backgroundGradient != "solid") {
                 val overlayColors = intArrayOf(
                     (color1 and 0x00FFFFFF) or 0x55000000,
                     (color2 and 0x00FFFFFF) or 0x55000000
