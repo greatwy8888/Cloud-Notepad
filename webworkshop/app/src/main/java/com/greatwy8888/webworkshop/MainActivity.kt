@@ -15,6 +15,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.*
 import android.content.Intent
+import android.provider.Settings
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
 import android.app.AlertDialog
 import android.os.Handler
 import android.os.Looper
@@ -36,6 +40,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var showingPreview = false
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
     private var historyDialog: AlertDialog? = null
+    private var activationInProgress = false
 
     private val htmlPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -193,7 +198,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         // A fresh launch starts with a clean form. Keep build history, generated
         // APKs, per-project signing keys, package mappings and version counters.
         if (savedInstanceState == null) resetTransientOptions() else restoreTransientOptions()
-        showHome()
+        if (ActivationStore.isActivated(this)) showHome() else showActivationScreen()
     }
 
     private fun restoreTransientOptions() {
@@ -432,6 +437,141 @@ class MainActivity : androidx.activity.ComponentActivity() {
         setOnClickListener { action() }
     }
 
+    private fun showActivationScreen() {
+        val alreadyActivated = ActivationStore.isActivated(this)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            setBackgroundColor(Color.rgb(242, 247, 252))
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(24), dp(22), dp(22))
+            background = roundedBackground(Color.WHITE, Color.rgb(225, 234, 243))
+            elevation = dp(3).toFloat()
+        }
+        panel.addView(TextView(this).apply {
+            text = "网页工坊授权激活"
+            textSize = 23f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(Color.rgb(28, 70, 111))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(-1, dp(48)))
+        panel.addView(TextView(this).apply {
+            text = if (alreadyActivated) {
+                "当前设备已激活。输入新的序列号可更换授权；如果取消或激活失败，当前授权仍然保留。"
+            } else {
+                "首次使用需要联网激活。每个序列号只能成功使用一次；激活成功后会保存在本机，可离线使用。"
+            }
+            textSize = 13f
+            setTextColor(Color.rgb(91, 108, 125))
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(16))
+        })
+        val serialInput = EditText(this).apply {
+            hint = "请输入序列号，例如 WW-XXXX-XXXX"
+            isSingleLine = true
+            textSize = 15f
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = roundedBackground(Color.rgb(248, 251, 254), Color.rgb(220, 230, 240))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        }
+        panel.addView(serialInput, LinearLayout.LayoutParams(-1, dp(54)))
+        val message = TextView(this).apply {
+            text = "版本：${BuildConfig.VERSION_NAME}"
+            textSize = 12f
+            setTextColor(Color.rgb(105, 124, 142))
+            setPadding(0, dp(10), 0, dp(10))
+        }
+        panel.addView(message)
+        val activate = primaryButton(if (alreadyActivated) "使用新序列号重新激活" else "联网激活") {
+            val serial = serialInput.text.toString().trim()
+            if (serial.isBlank()) {
+                message.text = "请先输入序列号"
+                return@primaryButton
+            }
+            if (activationInProgress) return@primaryButton
+            activationInProgress = true
+            message.text = "正在连接授权服务器，请稍候……"
+            serialInput.isEnabled = false
+            activateButtonState(activate = null)
+            activateSerial(serial) { success, result ->
+                activationInProgress = false
+                serialInput.isEnabled = true
+                if (success) {
+                    Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+                    showHome()
+                } else {
+                    message.text = result
+                    activateButtonState(activate)
+                }
+            }
+        }
+        panel.addView(activate, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(8) })
+        if (alreadyActivated) {
+            panel.addView(button("返回已激活的网页工坊") { showHome() },
+                LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) })
+        }
+        page.addView(panel, LinearLayout.LayoutParams(-1, -2))
+        setContentView(page)
+    }
+
+    private fun activateButtonState(activate: Button?) {
+        // The activation button is disabled by the in-progress flag; the callback re-enables it.
+        activate?.isEnabled = true
+    }
+
+    private fun activateSerial(serial: String, callback: (Boolean, String) -> Unit) {
+        val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+        val deviceId = MessageDigest.getInstance("SHA-256")
+            .digest((androidId + "|" + packageName).toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val payload = org.json.JSONObject()
+                    .put("serial", serial)
+                    .put("build_id", BuildConfig.VERSION_NAME)
+                    .put("device_id", deviceId)
+                    .put("package_name", packageName)
+                    .put("app_version", BuildConfig.VERSION_NAME)
+                connection = (URL("https://cloud-notepad.3985196992.workers.dev/api/webworkshop/activate")
+                    .openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 15000
+                    readTimeout = 20000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    setRequestProperty("Accept", "application/json")
+                }
+                connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                val code = connection.responseCode
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                val responseText = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                val response = org.json.JSONObject(responseText)
+                if (code in 200..299 && response.optBoolean("ok")) {
+                    val receipt = org.json.JSONObject()
+                        .put("activation_id", response.optString("activation_id"))
+                        .put("build_id", response.optString("build_id"))
+                        .put("activated_at", response.optLong("activated_at"))
+                        .put("device_id", response.optString("device_id"))
+                        .put("app_version", BuildConfig.VERSION_NAME)
+                    ActivationStore.save(this, receipt.toString())
+                    Handler(Looper.getMainLooper()).post { callback(true, "激活成功，网页工坊现在可以使用") }
+                } else {
+                    val error = response.optString("error").ifBlank { "激活失败（HTTP $code）" }
+                    Handler(Looper.getMainLooper()).post { callback(false, error) }
+                }
+            } catch (e: Exception) {
+                val error = "连接或保存激活信息失败：${e.localizedMessage ?: e.javaClass.simpleName}。请检查网络后重试。"
+                Handler(Looper.getMainLooper()).post { callback(false, error) }
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
+    }
+
     private fun showHome() {
         showingPreview = false
         root = LinearLayout(this).apply {
@@ -560,6 +700,14 @@ class MainActivity : androidx.activity.ComponentActivity() {
         form.addView(iconModeGroup)
         form.addView(imagePreview(iconUri, "APP 图标（上传单张图片）", dp(150), "icon"))
         form.addView(imagePreview(splashUri, "启动画面（点击图片区域添加或更换）", dp(220), "splash"))
+        form.addView(label("授权状态"))
+        form.addView(TextView(this).apply {
+            text = "已激活 · 本机保存授权回执，后续可离线使用"
+            textSize = 12f
+            setTextColor(Color.rgb(38, 130, 105))
+        })
+        form.addView(button("更换 / 重新激活序列号") { showActivationScreen() },
+            LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(7) })
         form.addView(label("自动设置"))
         form.addView(TextView(this).apply {
             text = "包名自动生成 · 签名密钥自动创建并保存在本机 · 版本号自动递增"
