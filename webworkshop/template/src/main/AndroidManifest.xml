@@ -3,7 +3,7 @@
     <application
         android:allowBackup="false"
         android:label="网页应用"
-        android:icon="@drawable/ic_webworkshop"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
         <activity android:name="com.greatwy8888.webworkshop.template.GeneratedActivity" android:exported="true">
