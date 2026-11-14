@@ -243,7 +243,7 @@ object ApkGenerator {
             val options = BitmapFactory.Options().apply { inSampleSize = sample }
             val decoded = source.inputStream().use { BitmapFactory.decodeStream(it, null, options) }
                 ?: throw IllegalStateException("图片解码失败")
-            val prepared = if (removeWhiteBackground) removeEdgeWhiteBackground(decoded) else decoded
+            val prepared = if (removeWhiteBackground) removeNearWhiteEdgeBackground(decoded) else decoded
             try {
                 val canvasBitmap = Bitmap.createBitmap(maxWidth, maxHeight, Bitmap.Config.ARGB_8888)
                 try {
@@ -274,9 +274,10 @@ object ApkGenerator {
     }
 
 
-    // Remove only near-white pixels connected to the image edges. White details enclosed
-    // by the red artwork (the play triangle and outline) remain fully opaque.
-    private fun removeEdgeWhiteBackground(source: Bitmap): Bitmap {
+    // Generic white-background cleanup for uploaded app icons:
+    // only near-white pixels connected to the outer image edge become transparent.
+    // The rule depends on pixel color and edge connectivity, never on the depicted subject.
+    private fun removeNearWhiteEdgeBackground(source: Bitmap): Bitmap {
         val width = source.width
         val height = source.height
         val pixels = IntArray(width * height)
