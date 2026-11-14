@@ -4,9 +4,11 @@ import android.os.Bundle
 import android.content.Context
 import android.net.Uri
 import java.io.File
+import java.io.FileOutputStream
 import androidx.documentfile.provider.DocumentFile
 import android.graphics.Color
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -102,6 +104,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
                         "jpg", "jpeg" -> "jpg"
                         else -> "img"
                     }
+                }
+                if (pendingImage == "icon") {
+                    folder.listFiles()?.filter { it.name.startsWith("app_icon_original.") }?.forEach { it.delete() }
                 }
                 val saved = File(folder, "$name.$extension")
                 contentResolver.openInputStream(uri)?.use { input ->
