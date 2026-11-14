@@ -152,9 +152,12 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin-top:12px}td,th{b
 </div><button id="createButton" type="button">生成序列号</button> <button id="refreshButton" class="secondary" type="button" onclick="var m=document.getElementById('message');if(m)m.textContent='刷新按钮点击事件已触发，正在读取记录…';if(typeof window.loadList==='function'){window.loadList()}else if(m){m.textContent='按钮事件已触发，但刷新函数未加载。请反馈页面版本号。'}">刷新记录</button>
 <div class="muted">每个序列号仅可成功激活一次；不同序列号可在同一设备上先后使用。生成后无法再次查看完整明文。</div></div>
 <div class="panel"><b>本次生成的序列号（仅显示一次）</b><pre id="codes">尚未生成</pre><button id="copyButton" class="secondary" type="button">复制序列号</button><button id="downloadButton" class="secondary" type="button">导出 TXT</button></div>
-<div class="panel"><b>使用记录</b><div id="message" class="muted">管理页面版本：2026-11-14-2；正在初始化脚本…</div><div style="overflow:auto"><table><thead><tr><th>序列号提示</th><th>版本</th><th>状态</th><th>激活时间 / 设备</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+<div class="panel"><b>使用记录</b><div id="message" class="muted">管理页面版本：2026-11-14-3；正在等待脚本启动…</div><div style="overflow:auto"><table><thead><tr><th>序列号提示</th><th>版本</th><th>状态</th><th>激活时间 / 设备</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 </main><script>
 "use strict";
+// 立即更新状态：用于区分脚本完全未运行与后续初始化失败。
+var bootMessage = document.getElementById("message");
+if (bootMessage) { bootMessage.textContent = "管理页面版本：2026-11-14-3；脚本已启动，正在初始化按钮…"; bootMessage.style.color = "#166534"; }
 var latest = [];
 var keyInput = document.getElementById("key");
 var messageBox = document.getElementById("message");
@@ -360,7 +363,7 @@ document.getElementById("rows").addEventListener("click", function (event) {
   var button = event.target.closest(".revokeButton");
   if (button) revokeCode(button.getAttribute("data-id"));
 });
-showMessage("管理页面脚本已启动。请输入管理员密钥，然后点击刷新记录或生成序列号。", false);
+showMessage("管理页面版本：2026-11-14-3；脚本初始化成功。请输入管理员密钥，然后点击刷新记录或生成序列号。", false);
 </script></body></html>`;
 
 export async function handleWebWorkshopLicenseRequest(req, env) {
