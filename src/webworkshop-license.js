@@ -86,7 +86,10 @@ async function handleAdmin(req, env, url) {
         "INSERT INTO webworkshop_licenses(id,serial_hash,serial_hint,product_id,build_id,created_at) VALUES(?,?,?,?,?,?)"
       ).bind(id, serialHash, serial.slice(0, 7) + "…" + serial.slice(-4), "webworkshop", buildId, createdAt));
     }
-    // D1 batch requests are chunked to stay within practical statement limits.\n    for (let i = 0; i < statements.length; i += 100) {\n      await env.DB.batch(statements.slice(i, i + 100));\n    }
+    // D1 batch requests are chunked to stay within practical statement limits.
+    for (let i = 0; i < statements.length; i += 100) {
+      await env.DB.batch(statements.slice(i, i + 100));
+    }
     // Plaintext serials are returned only once and are never stored in the database.
     return reply({ ok: true, product_id: "webworkshop", build_id: buildId, count, serials: issued.map(x => x.serial) });
   }
@@ -143,8 +146,8 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin-top:12px}td,th{b
 let latest=[];
 const safe=s=>String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
 const key=()=>document.getElementById("key").value;
-async function api(path,options={}){const r=await fetch(path,{...options,headers:{...(options.headers||{}),"content-type":"application/json","x-webworkshop-admin-key":key()}});const j=await r.json();if(!r.ok)throw Error(j.error||"请求失败");return j}
-async function createCodes(){try{const j=await api("/api/webworkshop/admin/create",{method:"POST",body:JSON.stringify({build_id:document.getElementById("build").value,count:Number(document.getElementById("count").value)})});latest=j.serials;document.getElementById("codes").textContent=latest.join("\n");document.getElementById("message").textContent="已生成 "+j.count+" 个序列号。明文仅显示本次，请立即保存。";await loadList()}catch(e){alert(e.message)}}
+async function api(path,options={}){const r=await fetch(path,{...options,headers:{...(options.headers||{}),"content-type":"application/json","x-webworkshop-admin-key":key()}});const j=await r.json().catch(()=>({}));if(!r.ok)throw Error((j.error||"请求失败")+"（HTTP "+r.status+"）");return j}
+async function createCodes(){const message=document.getElementById("message");const button=document.querySelector("button[onclick=\"createCodes()\"]");if(button)button.disabled=true;message.textContent="正在向授权服务器申请生成…";try{const j=await api("/api/webworkshop/admin/create",{method:"POST",body:JSON.stringify({build_id:document.getElementById("build").value,count:Number(document.getElementById("count").value)})});latest=j.serials||[];document.getElementById("codes").textContent=latest.length?latest.join("\n"):"服务器未返回序列号";message.textContent="已生成 "+j.count+" 个序列号。明文仅显示本次，请立即复制或导出保存。";await loadList()}catch(e){message.textContent="生成失败："+e.message;alert("序列号生成失败：\n"+e.message)}finally{if(button)button.disabled=false}}
 async function loadList(){try{const j=await api("/api/webworkshop/admin/list");document.getElementById("rows").innerHTML=(j.licenses||[]).map(x=>{const status=x.revoked_at?"已撤销":x.used_at?"已使用":"未使用";const detail=x.used_at?new Date(x.used_at).toLocaleString()+" / "+(x.device_id||""):"—";return "<tr><td>"+safe(x.serial_hint)+"</td><td>"+safe(x.build_id)+"</td><td>"+status+"</td><td>"+safe(detail)+"</td><td>"+(!x.used_at&&!x.revoked_at?'<button class="danger" onclick="revoke(\''+x.id+'\')">撤销</button>':"—")+"</td></tr>"}).join("");document.getElementById("message").textContent="共显示 "+(j.licenses||[]).length+" 条（最多 500 条）"}catch(e){document.getElementById("message").textContent=e.message}}
 async function revoke(id){if(!confirm("确定撤销这个尚未使用的序列号？"))return;try{await api("/api/webworkshop/admin/revoke",{method:"POST",body:JSON.stringify({id})});await loadList()}catch(e){alert(e.message)}}
 function copyCodes(){if(latest.length)navigator.clipboard.writeText(latest.join("\n")).then(()=>alert("已复制"))}
