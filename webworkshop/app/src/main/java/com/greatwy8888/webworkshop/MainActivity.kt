@@ -210,7 +210,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 ?: "file://${File(path).parentFile?.absolutePath}/"
         }
         iconUri = prefs.getString("icon_uri", null)?.let { Uri.parse(it) }
-        iconFitMode = (prefs.getString("icon_fit_mode", "manual") ?: "manual").let { if (it == "fit") "manual" else it }
+        iconFitMode = (prefs.getString("icon_fit_mode", "manual") ?: "manual").let { if (it == "fit") "manual" else if (it == "fill") "original" else it }
         splashUri = prefs.getString("splash_uri", null)?.let { Uri.parse(it) }
     }
 
