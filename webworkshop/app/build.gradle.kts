@@ -11,8 +11,8 @@ android {
         applicationId = "com.greatwy8888.webworkshop"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "1.4.5"
+        versionCode = 20
+        versionName = "1.4.6"
     }
 
 
