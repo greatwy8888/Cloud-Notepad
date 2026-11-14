@@ -36,7 +36,9 @@ function makeSerial() {
 }
 
 async function ensureLicenseSchema(db) {
-  await db.exec(`
+  // Execute each DDL statement separately. D1's exec() multi-statement path
+  // can reject this schema batch as an incomplete CREATE TABLE statement.
+  await db.prepare(`
     CREATE TABLE IF NOT EXISTS webworkshop_licenses (
       id TEXT PRIMARY KEY,
       serial_hash TEXT NOT NULL UNIQUE,
@@ -49,12 +51,16 @@ async function ensureLicenseSchema(db) {
       app_version TEXT,
       package_name TEXT,
       revoked_at INTEGER
-    );
+    )
+  `).run();
+  await db.prepare(`
     CREATE INDEX IF NOT EXISTS idx_webworkshop_licenses_build
-      ON webworkshop_licenses(product_id, build_id, created_at);
+    ON webworkshop_licenses(product_id, build_id, created_at)
+  `).run();
+  await db.prepare(`
     CREATE INDEX IF NOT EXISTS idx_webworkshop_licenses_status
-      ON webworkshop_licenses(used_at, revoked_at, created_at);
-  `);
+    ON webworkshop_licenses(used_at, revoked_at, created_at)
+  `).run();
 }
 
 function adminAuthorized(req, env) {
