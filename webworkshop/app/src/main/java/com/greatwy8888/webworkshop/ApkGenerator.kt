@@ -296,7 +296,7 @@ object ApkGenerator {
                 insetRight = insetLeft
             }
             val insetXml = "<inset xmlns:android=\\"http://schemas.android.com/apk/res/android\\" " +
-                "android:drawable=\\"@drawable-nodpi/ic_launcher_preview\\" " +
+                "android:drawable=\\"@drawable/ic_launcher_preview\\" " +
                 "android:insetLeft=\\"$insetLeft" + "dp\\" " +
                 "android:insetTop=\\"$insetTop" + "dp\\" " +
                 "android:insetRight=\\"$insetRight" + "dp\\" " +
