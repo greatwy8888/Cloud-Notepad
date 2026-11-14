@@ -27,6 +27,19 @@ jobs:
           node --check src/index.js
           node --check src/webworkshop-license.js
 
+      - name: Check embedded admin page JavaScript
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const source = fs.readFileSync('src/webworkshop-license.js', 'utf8');
+          const html = source.match(/const ADMIN_HTML = \x60([\\s\\S]*?)\x60;/)?.[1];
+          if (!html) throw new Error('ADMIN_HTML template not found');
+          const script = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+          if (!script) throw new Error('Admin page script not found');
+          fs.writeFileSync('/tmp/webworkshop-admin.js', script);
+          NODE
+          node --check /tmp/webworkshop-admin.js
+
       - name: Validate deployment secrets
         env:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
