@@ -138,10 +138,10 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin-top:12px}td,th{b
 <div class="panel"><b>生成一次性序列号</b><div class="grid">
 <div><label>适用网页工坊版本标识</label><input id="build" value="1.4.6" placeholder="例如 1.4.6"></div>
 <div><label>数量</label><input id="count" type="number" min="1" max="500" value="10"></div>
-</div><button id="createButton" type="button" onclick="document.getElementById('message').textContent='已收到生成按钮点击，正在启动操作…'; if(window.createCodes){window.createCodes()}else{document.getElementById('message').textContent='按钮已触发，但页面脚本未正确启动，请刷新页面并检查脚本。'}">生成序列号</button> <button id="refreshButton" class="secondary" type="button" onclick="document.getElementById('message').textContent='已收到刷新按钮点击，正在读取记录…'; if(window.loadList){window.loadList()}else{document.getElementById('message').textContent='按钮已触发，但页面脚本未正确启动，请刷新页面并检查脚本。'}">刷新记录</button>
+</div><button id="createButton" type="button" onclick="var m=document.getElementById('message');var c=document.getElementById('codes');if(m)m.textContent='按钮点击事件已触发，正在执行生成…';if(c)c.textContent='按钮已响应，正在请求服务器…';if(typeof window.createCodes==='function'){window.createCodes()}else if(m){m.textContent='按钮事件已触发，但生成函数未加载。请查看页面版本号并反馈。'}">生成序列号</button> <button id="refreshButton" class="secondary" type="button" onclick="var m=document.getElementById('message');if(m)m.textContent='刷新按钮点击事件已触发，正在读取记录…';if(typeof window.loadList==='function'){window.loadList()}else if(m){m.textContent='按钮事件已触发，但刷新函数未加载。请反馈页面版本号。'}">刷新记录</button>
 <div class="muted">每个序列号仅可成功激活一次；不同序列号可在同一设备上先后使用。生成后无法再次查看完整明文。</div></div>
 <div class="panel"><b>本次生成的序列号（仅显示一次）</b><pre id="codes">尚未生成</pre><button id="copyButton" class="secondary" type="button">复制序列号</button><button id="downloadButton" class="secondary" type="button">导出 TXT</button></div>
-<div class="panel"><b>使用记录</b><div id="message" class="muted">输入管理员密钥后点击刷新。</div><div style="overflow:auto"><table><thead><tr><th>序列号提示</th><th>版本</th><th>状态</th><th>激活时间 / 设备</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+<div class="panel"><b>使用记录</b><div id="message" class="muted">管理页面版本：2026-11-14-2；正在初始化脚本…</div><div style="overflow:auto"><table><thead><tr><th>序列号提示</th><th>版本</th><th>状态</th><th>激活时间 / 设备</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 </main><script>
 "use strict";
 var latest = [];
@@ -303,8 +303,9 @@ window.addEventListener("error", function (event) {
 window.addEventListener("unhandledrejection", function (event) {
   showMessage("页面异步操作异常：" + explainError(event.reason), true);
 });
-createButton.addEventListener("click", createCodes);
-refreshButton.addEventListener("click", loadList);
+// 显式公开管理操作函数，供按钮调用。
+window.createCodes = createCodes;
+window.loadList = loadList;
 document.getElementById("copyButton").addEventListener("click", copyCodes);
 document.getElementById("downloadButton").addEventListener("click", downloadCodes);
 document.getElementById("rows").addEventListener("click", function (event) {
