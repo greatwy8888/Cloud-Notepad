@@ -1,0 +1,68 @@
+name: Deploy WebWorkshop License Service
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - webworkshop-develop
+    paths:
+      - 'src/index.js'
+      - 'src/webworkshop-license.js'
+      - 'migrations/**'
+      - 'wrangler.jsonc'
+      - '.github/workflows/deploy-webworkshop-license.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate deployment secrets
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_KEY: ${{ secrets.WEBWORKSHOP_ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$CF_API_TOKEN" ] || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret"; exit 1; }
+          [ -n "$CF_ACCOUNT_ID" ] || { echo "::error::Missing CLOUDFLARE_ACCOUNT_ID repository secret"; exit 1; }
+          [ -n "$ADMIN_KEY" ] && [ "${#ADMIN_KEY}" -ge 32 ] || { echo "::error::WEBWORKSHOP_ADMIN_KEY must be at least 32 characters"; exit 1; }
+
+      - name: Create or locate D1 database
+        id: d1
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 d1 list --json > /tmp/d1-list.json
+          DB_ID=$(jq -r '.[] | select(.name == "webworkshop-licenses") | (.uuid // .id)' /tmp/d1-list.json | head -n1)
+          if [ -z "$DB_ID" ] || [ "$DB_ID" = "null" ]; then
+            npx --yes wrangler@4 d1 create webworkshop-licenses
+            npx --yes wrangler@4 d1 list --json > /tmp/d1-list.json
+            DB_ID=$(jq -r '.[] | select(.name == "webworkshop-licenses") | (.uuid // .id)' /tmp/d1-list.json | head -n1)
+          fi
+          [ -n "$DB_ID" ] && [ "$DB_ID" != "null" ] || { echo "::error::Unable to obtain D1 database ID"; exit 1; }
+          echo "database_id=$DB_ID" >> "$GITHUB_OUTPUT"
+          sed -i "s/REPLACE_WITH_D1_DATABASE_ID/$DB_ID/" wrangler.jsonc
+
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 d1 migrations apply webworkshop-licenses --remote
+
+      - name: Configure admin secret and deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WEBWORKSHOP_ADMIN_KEY: ${{ secrets.WEBWORKSHOP_ADMIN_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$WEBWORKSHOP_ADMIN_KEY" | npx --yes wrangler@4 secret put WEBWORKSHOP_ADMIN_KEY
+          npx --yes wrangler@4 deploy
