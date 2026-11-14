@@ -308,7 +308,8 @@ object ApkGenerator {
             if (glowEnabled) drawMaskEffect(glowColor, glowBlur)
             if (shadowEnabled) drawMaskEffect(shadowColor, shadowBlur, 0f, 9f)
             if (outlineEnabled) drawMaskEffect(outlineColor, outlineBlur)
-            canvas.drawBitmap(foreground.copy(Bitmap.Config.ARGB_8888, false), 0f, 0f, null)
+            canvas.drawBitmap(extracted, null, android.graphics.RectF(left, top, left + w, top + h),
+                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
             FileOutputStream(File(drawableDir, "ic_launcher_foreground.png")).use {
                 check(foreground.compress(Bitmap.CompressFormat.PNG, 100, it)) { "自适应图标前景层生成失败" }
             }
