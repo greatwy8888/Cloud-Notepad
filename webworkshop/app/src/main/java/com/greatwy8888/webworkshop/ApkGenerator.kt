@@ -189,7 +189,7 @@ object ApkGenerator {
             request.iconUri?.let {
                 createAdaptiveIconResources(
                     context, decoded, it, request.iconBackgroundUri,
-                    request.iconBackgroundColor, request.iconBackgroundColor2,
+                    request.iconSingleImageMode, request.iconBackgroundColor, request.iconBackgroundColor2,
                     request.iconBackgroundGradient, request.iconBackgroundDirection,
                     request.iconForegroundGradientEnabled, request.iconForegroundColor, request.iconForegroundColor2,
                     request.iconShadowEnabled, request.iconShadowColor, request.iconShadowBlur,
