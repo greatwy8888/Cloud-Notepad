@@ -90,7 +90,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 val folder = File(filesDir, "custom_images").apply {
                     check(mkdirs() || exists()) { "无法创建自定义图片目录" }
                 }
-                val name = if (pendingImage == "icon") "app_icon" else "app_splash"
+                val name = if (pendingImage == "icon") "app_icon_original" else "app_splash"
                 val mime = contentResolver.getType(uri).orEmpty()
                 val extension = when (mime.lowercase()) {
                     "image/png" -> "png"
@@ -110,10 +110,14 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 check(saved.length() > 0L) { "所选图片为空" }
                 val savedUri = Uri.fromFile(saved)
                 if (pendingImage == "icon") {
-                    iconUri = savedUri
-                    prefs.edit().putString("icon_uri", savedUri.toString()).apply()
-                    showHome()
-                    status.text = "APP 图标图片已保存"
+                    if (iconFitMode == "fill") {
+                        iconUri = savedUri
+                        prefs.edit().putString("icon_uri", savedUri.toString()).apply()
+                        showHome()
+                        status.text = "已选择图标原图；铺满模式保持原有处理方式"
+                    } else {
+                        showIconCropEditor(savedUri)
+                    }
                 } else {
                     splashUri = savedUri
                     prefs.edit().putString("splash_uri", savedUri.toString()).apply()
@@ -238,9 +242,14 @@ class MainActivity : androidx.activity.ComponentActivity() {
         val frame = android.widget.FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(239, 244, 248))
         }
+        if (kind == "icon") {
+            frame.layoutParams = LinearLayout.LayoutParams(dp(180), dp(180))
+            frame.background = roundedBackground(Color.rgb(239, 244, 248), Color.rgb(215, 225, 235))
+        }
         val image = ImageView(this).apply {
             scaleType = if (kind == "icon" && iconFitMode == "fill") ImageView.ScaleType.CENTER_CROP else ImageView.ScaleType.FIT_CENTER
-            setPadding(dp(6), dp(6), dp(6), dp(6))
+            setPadding(if (kind == "icon" && iconFitMode == "fit") 0 else dp(6), if (kind == "icon" && iconFitMode == "fit") 0 else dp(6),
+                if (kind == "icon" && iconFitMode == "fit") 0 else dp(6), if (kind == "icon" && iconFitMode == "fit") 0 else dp(6))
         }
         if (uri != null) {
             try {
@@ -292,9 +301,19 @@ class MainActivity : androidx.activity.ComponentActivity() {
             pendingImage = kind
             imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
         }
-        panel.addView(frame, LinearLayout.LayoutParams(-1, previewHeight))
+        val previewParams = if (kind == "icon") LinearLayout.LayoutParams(dp(180), dp(180))
+            else LinearLayout.LayoutParams(-1, previewHeight)
+        panel.addView(frame, previewParams)
+        if (kind == "icon" && iconFitMode == "fit" && uri != null) {
+            panel.addView(button("调整图标位置 / 缩放 / 裁切") {
+                val original = File(filesDir, "custom_images").listFiles()
+                    ?.firstOrNull { it.name.startsWith("app_icon_original.") }
+                if (original != null) showIconCropEditor(Uri.fromFile(original))
+                else showIconCropEditor(uri)
+            }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
+        }
         panel.addView(TextView(this).apply {
-            text = if (uri == null) "点击上方区域选择图片" else "已选择图片 · 点击图片可更换，右上角 × 删除"
+            text = if (uri == null) "点击上方方框选择图片" else "已选择图片 · 点击图片可更换，右上角 × 删除"
             textSize = 11f
             setTextColor(Color.rgb(120, 135, 150))
         })
@@ -440,7 +459,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
         form.addView(label("应用图标与启动画面"))
         form.addView(TextView(this).apply {
-            text = "上传一张图片作为完整 APP 图标。图片保持原有内容和比例；如果四角没有圆角，将自动生成圆角图标。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB。"
+            text = "铺满模式保持原有铺满裁切逻辑。完整模式可在方形预览框内双指缩放、单指移动并手动裁切；不自动加背景、滤镜、阴影或圆角，按原图内容输出图标。可选择 1024×1024 或 512×512 编辑导出尺寸。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB。"
             textSize = 12f
             setTextColor(Color.rgb(105, 124, 142))
             setPadding(0, dp(2), 0, dp(8))
@@ -453,7 +472,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
         val fitMode = RadioButton(this).apply {
             id = View.generateViewId()
-            text = "完整模式（保留整张图片，不裁剪）"
+            text = "完整模式（手动调整方形裁切，不做自动美化）"
             isChecked = iconFitMode != "fill"
         }
         iconModeGroup.addView(fillMode)
