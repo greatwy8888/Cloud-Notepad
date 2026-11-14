@@ -5,13 +5,13 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * Manual square crop surface. It never applies filters, corner rounding, background,
@@ -147,28 +147,18 @@ class IconCropView(context: Context, private val source: Bitmap) : View(context)
         return true
     }
 
-    fun exportBitmap(outputSize: Int): Bitmap {
+    /**
+     * Lossless square pixel crop from the original bitmap. No resampling or effects.
+     */
+    fun exportOriginalPixelCrop(): Bitmap {
         initialize()
         val crop = cropRect()
-        val sourceLeft = ((crop.left - offsetX) / scale).coerceIn(0f, source.width.toFloat())
-        val sourceTop = ((crop.top - offsetY) / scale).coerceIn(0f, source.height.toFloat())
-        val sourceSide = crop.width() / scale
-        val safeSide = min(sourceSide, min(source.width - sourceLeft, source.height - sourceTop))
-        require(safeSide > 0f) { "裁切区域无效" }
-        val result = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        val sourceRect = Rect(
-            sourceLeft.toInt().coerceIn(0, source.width - 1),
-            sourceTop.toInt().coerceIn(0, source.height - 1),
-            (sourceLeft + safeSide).toInt().coerceIn(1, source.width),
-            (sourceTop + safeSide).toInt().coerceIn(1, source.height)
-        )
-        canvas.drawBitmap(
-            source,
-            sourceRect,
-            Rect(0, 0, outputSize, outputSize),
-            imagePaint
-        )
-        return result
+        val side = (crop.width() / scale).roundToInt()
+            .coerceIn(1, min(source.width, source.height))
+        val centerX = (crop.centerX() - offsetX) / scale
+        val centerY = (crop.centerY() - offsetY) / scale
+        val left = (centerX - side / 2f).roundToInt().coerceIn(0, source.width - side)
+        val top = (centerY - side / 2f).roundToInt().coerceIn(0, source.height - side)
+        return Bitmap.createBitmap(source, left, top, side, side)
     }
 }
