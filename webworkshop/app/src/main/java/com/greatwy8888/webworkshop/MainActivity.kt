@@ -495,7 +495,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
             activationInProgress = true
             message.text = "正在连接授权服务器，请稍候……"
             serialInput.isEnabled = false
-            activateButtonState(activate = null)
             activateSerial(serial) { success, result ->
                 activationInProgress = false
                 serialInput.isEnabled = true
@@ -504,7 +503,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     showHome()
                 } else {
                     message.text = result
-                    activateButtonState(activate)
                 }
             }
         }
@@ -515,11 +513,6 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
         page.addView(panel, LinearLayout.LayoutParams(-1, -2))
         setContentView(page)
-    }
-
-    private fun activateButtonState(activate: Button?) {
-        // The activation button is disabled by the in-progress flag; the callback re-enables it.
-        activate?.isEnabled = true
     }
 
     private fun activateSerial(serial: String, callback: (Boolean, String) -> Unit) {
