@@ -284,30 +284,35 @@ object ApkGenerator {
 
             // Effects are drawn from the foreground alpha mask, behind the original artwork.
             // This keeps shadows/glows generic and independent of the uploaded image's subject.
-            fun drawMaskEffect(colorValue: String, blur: Int, dx: Float = 0f, dy: Float = 0f) {
-                val radius = blur.coerceIn(0, 48)
-                val offset = IntArray(2)
-                val maskPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                    if (radius > 0) maskFilter = android.graphics.BlurMaskFilter(
-                        radius.toFloat(), android.graphics.BlurMaskFilter.Blur.NORMAL
-                    )
-                }
-                val mask = foreground.extractAlpha(maskPaint, offset)
-                try {
-                    val tint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
-                        colorFilter = android.graphics.PorterDuffColorFilter(
-                            parseColor(colorValue, Color.BLACK), android.graphics.PorterDuff.Mode.SRC_IN
+            val subjectMask = foreground.extractAlpha()
+            try {
+                fun drawMaskEffect(colorValue: String, blur: Int, dx: Float = 0f, dy: Float = 0f) {
+                    val radius = blur.coerceIn(0, 48)
+                    val offset = IntArray(2)
+                    val maskPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        if (radius > 0) maskFilter = android.graphics.BlurMaskFilter(
+                            radius.toFloat(), android.graphics.BlurMaskFilter.Blur.NORMAL
                         )
                     }
-                    canvas.drawBitmap(mask, offset[0] + dx, offset[1] + dy, tint)
-                } finally {
-                    mask.recycle()
+                    val mask = subjectMask.extractAlpha(maskPaint, offset)
+                    try {
+                        val tint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
+                            colorFilter = android.graphics.PorterDuffColorFilter(
+                                parseColor(colorValue, Color.BLACK), android.graphics.PorterDuff.Mode.SRC_IN
+                            )
+                        }
+                        canvas.drawBitmap(mask, offset[0] + dx, offset[1] + dy, tint)
+                    } finally {
+                        mask.recycle()
+                    }
                 }
-            }
 
-            if (glowEnabled) drawMaskEffect(glowColor, glowBlur)
-            if (shadowEnabled) drawMaskEffect(shadowColor, shadowBlur, 0f, 9f)
-            if (outlineEnabled) drawMaskEffect(outlineColor, outlineBlur)
+                if (glowEnabled) drawMaskEffect(glowColor, glowBlur)
+                if (shadowEnabled) drawMaskEffect(shadowColor, shadowBlur, 0f, 9f)
+                if (outlineEnabled) drawMaskEffect(outlineColor, outlineBlur)
+            } finally {
+                subjectMask.recycle()
+            }
             canvas.drawBitmap(extracted, null, android.graphics.RectF(left, top, left + w, top + h),
                 android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG))
             FileOutputStream(File(drawableDir, "ic_launcher_foreground.png")).use {
