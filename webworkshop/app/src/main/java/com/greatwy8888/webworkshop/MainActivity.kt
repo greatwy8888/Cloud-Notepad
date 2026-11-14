@@ -236,12 +236,14 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int, kind: String): LinearLayout {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
             setPadding(dp(10), dp(8), dp(10), dp(10))
             setBackgroundColor(Color.WHITE)
         }
         panel.addView(TextView(this).apply {
             text = caption
             textSize = 12f
+            gravity = android.view.Gravity.CENTER
             setTextColor(Color.rgb(75, 96, 115))
         })
         val frame = android.widget.FrameLayout(this).apply {
@@ -307,7 +309,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
             imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
         }
         val previewParams = if (kind == "icon") LinearLayout.LayoutParams(dp(180), dp(180))
-            else LinearLayout.LayoutParams(-1, previewHeight)
+            else LinearLayout.LayoutParams(dp(124), previewHeight)
+        previewParams.gravity = android.view.Gravity.CENTER_HORIZONTAL
         panel.addView(frame, previewParams)
         if (kind == "icon" && iconFitMode == "fit" && uri != null) {
             panel.addView(button("调整图标位置 / 缩放 / 裁切") {
@@ -320,6 +323,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         panel.addView(TextView(this).apply {
             text = if (uri == null) "点击上方方框选择图片" else "已选择图片 · 点击图片可更换，右上角 × 删除"
             textSize = 11f
+            gravity = android.view.Gravity.CENTER
             setTextColor(Color.rgb(120, 135, 150))
         })
         return panel
@@ -333,28 +337,25 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 ?: throw IllegalStateException("无法解码图标图片")
             if (bitmap == null) throw IllegalStateException("图片格式不受支持")
             val cropView = IconCropView(this, bitmap)
-            val sizeGroup = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
-            val size512 = RadioButton(this).apply { id = View.generateViewId(); text = "512×512" }
-            val size1024 = RadioButton(this).apply { id = View.generateViewId(); text = "1024×1024"; isChecked = true }
-            sizeGroup.addView(size512)
-            sizeGroup.addView(size1024)
             val content = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
                 setPadding(dp(18), dp(8), dp(18), dp(4))
                 addView(TextView(this@MainActivity).apply {
-                    text = "在方框内拖动图片调整位置，双指缩放。框外部分将被裁切；框内图像不添加任何自动效果。"
+                    text = "拖动图片调整位置，双指缩放。白色方框内保留，框外遮罩区域将被裁掉。仅裁切原图像素，不缩放、不调色、不添加滤镜、圆角、阴影或背景。"
                     textSize = 13f
+                    gravity = android.view.Gravity.CENTER
                     setTextColor(Color.rgb(83, 99, 116))
                     setPadding(0, 0, 0, dp(10))
                 })
                 addView(cropView, LinearLayout.LayoutParams(-1, dp(300)))
                 addView(TextView(this@MainActivity).apply {
-                    text = "导出尺寸"
-                    textSize = 13f
+                    text = "导出将保留裁切区域的原始像素尺寸"
+                    textSize = 12f
+                    gravity = android.view.Gravity.CENTER
                     setTextColor(Color.rgb(83, 99, 116))
-                    setPadding(0, dp(12), 0, dp(2))
+                    setPadding(0, dp(10), 0, dp(2))
                 })
-                addView(sizeGroup)
             }
             val dialog = AlertDialog.Builder(this)
                 .setTitle("完整模式 · 图标裁切")
@@ -365,8 +366,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             dialog.setOnShowListener {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                     try {
-                        val outputSize = if (sizeGroup.checkedRadioButtonId == size512.id) 512 else 1024
-                        val cropped = cropView.exportBitmap(outputSize)
+                        val cropped = cropView.exportOriginalPixelCrop()
                         val folder = File(filesDir, "custom_images").apply { mkdirs() }
                         val output = File(folder, "app_icon_manual_crop.png")
                         FileOutputStream(output).use { stream ->
@@ -374,11 +374,11 @@ class MainActivity : androidx.activity.ComponentActivity() {
                         }
                         cropped.recycle()
                         iconUri = Uri.fromFile(output)
-                        prefs.edit().putString("icon_uri", iconUri.toString()).putString("icon_crop_size", outputSize.toString()).apply()
+                        prefs.edit().putString("icon_uri", iconUri.toString()).remove("icon_crop_size").apply()
                         bitmap.recycle()
                         dialog.dismiss()
                         showHome()
-                        status.text = "已应用 ${outputSize}×${outputSize} 手动裁切图标"
+                        status.text = "已应用原图像素裁切；未缩放或修改图像内容"
                     } catch (e: Exception) {
                         Toast.makeText(this, e.localizedMessage ?: "裁切失败", Toast.LENGTH_LONG).show()
                     }
@@ -529,7 +529,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
         form.addView(label("应用图标与启动画面"))
         form.addView(TextView(this).apply {
-            text = "铺满模式保持原有铺满裁切逻辑。完整模式可在方形预览框内双指缩放、单指移动并手动裁切；不自动加背景、滤镜、阴影或圆角，按原图内容输出图标。可选择 1024×1024 或 512×512 编辑导出尺寸。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB。"
+            text = "铺满模式保持原有铺满裁切逻辑。完整模式可在居中的方形预览框内双指缩放、单指移动；框内保留、框外裁掉，只裁切原图像素，不缩放、不调色、不加滤镜、圆角、阴影或背景。\n启动画面：推荐 1080×1920 px（9:16）PNG/JPG，主体放在中央安全区域，建议 ≤3 MB."
             textSize = 12f
             setTextColor(Color.rgb(105, 124, 142))
             setPadding(0, dp(2), 0, dp(8))
