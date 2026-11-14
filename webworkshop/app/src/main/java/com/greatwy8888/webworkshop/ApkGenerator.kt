@@ -35,6 +35,7 @@ object ApkGenerator {
         val localPath: String?,
         val localBase: String?,
         val iconUri: Uri?,
+        val iconFitMode: String = "fit",
         val splashUri: Uri?,
         val projectIdentity: String,
 
@@ -170,7 +171,7 @@ object ApkGenerator {
 
             stage = "处理自定义图片"
             request.iconUri?.let {
-                createAdaptiveIconResources(context, decoded, it)
+                createAdaptiveIconResources(context, decoded, it, request.iconFitMode)
             }
             request.splashUri?.let {
                 replaceImage(context, it, File(decoded, "res/drawable/splash.xml"), 1080, 1920)
@@ -224,7 +225,8 @@ object ApkGenerator {
     private fun createAdaptiveIconResources(
         context: Context,
         decoded: File,
-        iconUri: Uri
+        iconUri: Uri,
+        iconFitMode: String
     ) {
         val drawableDir = File(decoded, "res/drawable").apply { mkdirs() }
         val adaptiveDir = File(decoded, "res/mipmap-anydpi-v26").apply { mkdirs() }
@@ -240,7 +242,12 @@ object ApkGenerator {
             }
             canvas.save()
             canvas.clipPath(path)
-            val scale = minOf(512f / source.width, 512f / source.height)
+            // "fill" covers the full square and crops overflow; "fit" keeps the entire image visible.
+            val scale = if (iconFitMode == "fill") {
+                maxOf(512f / source.width, 512f / source.height)
+            } else {
+                minOf(512f / source.width, 512f / source.height)
+            }
             val width = source.width * scale
             val height = source.height * scale
             val left = (512f - width) / 2f
