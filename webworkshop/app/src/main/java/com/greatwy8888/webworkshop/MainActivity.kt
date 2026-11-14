@@ -28,6 +28,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var localHtml: String? = null
     private var localHtmlBaseUrl: String? = null
     private var iconUri: Uri? = null
+    private var iconBackgroundUri: Uri? = null
     private var splashUri: Uri? = null
     private var showingPreview = false
     private val prefs by lazy { getSharedPreferences("webworkshop", Context.MODE_PRIVATE) }
@@ -84,7 +85,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 val folder = File(filesDir, "custom_images").apply {
                     check(mkdirs() || exists()) { "无法创建自定义图片目录" }
                 }
-                val name = if (pendingImage == "icon") "app_icon" else "app_splash"
+                val name = when (pendingImage) { "icon" -> "app_icon"; "icon_background" -> "app_icon_background"; else -> "app_splash" }
                 val mime = contentResolver.getType(uri).orEmpty()
                 val extension = when (mime.lowercase()) {
                     "image/png" -> "png"
@@ -107,7 +108,12 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     iconUri = savedUri
                     prefs.edit().putString("icon_uri", savedUri.toString()).apply()
                     showHome()
-                    status.text = "应用图标已保存到本机，已更新预览"
+                    status.text = "应用图标前景层已保存，已更新预览"
+                } else if (pendingImage == "icon_background") {
+                    iconBackgroundUri = savedUri
+                    prefs.edit().putString("icon_background_uri", savedUri.toString()).apply()
+                    showHome()
+                    status.text = "应用图标背景层已保存，已更新预览"
                 } else {
                     splashUri = savedUri
                     prefs.edit().putString("splash_uri", savedUri.toString()).apply()
@@ -189,6 +195,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 ?: "file://${File(path).parentFile?.absolutePath}/"
         }
         iconUri = prefs.getString("icon_uri", null)?.let { Uri.parse(it) }
+        iconBackgroundUri = prefs.getString("icon_background_uri", null)?.let { Uri.parse(it) }
         splashUri = prefs.getString("splash_uri", null)?.let { Uri.parse(it) }
     }
 
@@ -196,6 +203,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         // Clear only the current form selection, not durable project identity/signing data.
         prefs.edit()
             .remove("icon_uri")
+            .remove("icon_background_uri")
             .remove("splash_uri")
             .remove("last_url")
             .remove("app_name")
@@ -206,6 +214,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             .remove("mode")
             .apply()
         iconUri = null
+        iconBackgroundUri = null
         splashUri = null
         localHtml = null
         localHtmlBaseUrl = null
@@ -263,12 +272,10 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
-                    if (kind == "icon") {
-                        iconUri = null
-                        prefs.edit().remove("icon_uri").apply()
-                    } else {
-                        splashUri = null
-                        prefs.edit().remove("splash_uri").apply()
+                    when (kind) {
+                        "icon" -> { iconUri = null; prefs.edit().remove("icon_uri").apply() }
+                        "icon_background" -> { iconBackgroundUri = null; prefs.edit().remove("icon_background_uri").apply() }
+                        else -> { splashUri = null; prefs.edit().remove("splash_uri").apply() }
                     }
                     showHome()
                     Toast.makeText(this@MainActivity, "图片已删除", Toast.LENGTH_SHORT).show()
@@ -281,7 +288,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         }
         frame.isClickable = true
         frame.isFocusable = true
-        frame.contentDescription = if (kind == "icon") "点击添加或更换应用图标" else "点击添加或更换启动画面"
+        frame.contentDescription = when (kind) { "icon" -> "点击添加或更换图标前景层"; "icon_background" -> "点击添加或更换图标背景层"; else -> "点击添加或更换启动画面" }
         frame.setOnClickListener {
             pendingImage = kind
             imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
@@ -438,7 +445,40 @@ class MainActivity : androidx.activity.ComponentActivity() {
             textSize = 12f; setTextColor(Color.rgb(105, 124, 142))
             setPadding(0, dp(2), 0, dp(8))
         })
-        form.addView(imagePreview(iconUri, "应用图标（点击图片区域添加或更换）", dp(112), "icon"))
+        form.addView(imagePreview(iconUri, "图标前景层（自动去除边缘白底）", dp(112), "icon"))
+        form.addView(label("图标背景层"))
+        form.addView(TextView(this).apply {
+            text = "可选择透明或纯色背景，也可以上传一张背景图片；背景图片会铺满图标画布。"
+            textSize = 12f; setTextColor(Color.rgb(105, 124, 142))
+        })
+        val backgroundChoices = listOf(
+            "透明背景" to "#00000000",
+            "白色背景" to "#FFFFFFFF",
+            "黑色背景" to "#FF202124",
+            "浅蓝背景" to "#FFEAF3FA",
+            "深蓝背景" to "#FF245A83",
+            "绿色背景" to "#FF2E8B57"
+        )
+        val backgroundSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                backgroundChoices.map { it.first })
+            val savedColor = prefs.getString("icon_background_color", "#00000000")
+            setSelection(backgroundChoices.indexOfFirst { it.second == savedColor }.coerceAtLeast(0))
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    prefs.edit().putString("icon_background_color", backgroundChoices[position].second).apply()
+                }
+            }
+        }
+        form.addView(backgroundSpinner, LinearLayout.LayoutParams(-1, dp(48)))
+        form.addView(button("上传图标背景图片（可选）") {
+            pendingImage = "icon_background"
+            imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
+        }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(6) })
+        if (iconBackgroundUri != null) {
+            form.addView(imagePreview(iconBackgroundUri, "自定义图标背景图片", dp(92), "icon_background"))
+        }
         form.addView(imagePreview(splashUri, "启动画面（点击图片区域添加或更换）", dp(220), "splash"))
 
         form.addView(label("自动设置"))
@@ -594,7 +634,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
             appName = title, mode = mode, url = url,
             localPath = prefs.getString("local_html_path", null),
             localBase = prefs.getString("local_html_base", null),
-            iconUri = iconUri, splashUri = splashUri, projectIdentity = identity
+            iconUri = iconUri, splashUri = splashUri, projectIdentity = identity,
+            iconBackgroundUri = iconBackgroundUri,
+            iconBackgroundColor = prefs.getString("icon_background_color", "#00000000") ?: "#00000000"
         )
         return ApkGenerator.resolvePackageName(this, request)
     }
@@ -648,6 +690,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
             localBase = prefs.getString("local_html_base", null),
             iconUri = iconUri,
             splashUri = splashUri,
+            iconBackgroundUri = iconBackgroundUri,
+            iconBackgroundColor = prefs.getString("icon_background_color", "#00000000") ?: "#00000000",
             projectIdentity = if (mode == "url") "url:" + url.trim() else
                 prefs.getString("local_project_identity", "") ?: ""
         )
