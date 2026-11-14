@@ -44,6 +44,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private var homeScrollView: ScrollView? = null
     private var savedHomeScrollY = 0
     private var previewPageUrl: String? = null
+    private var activePreviewWebView: WebView? = null
+    private var pendingClearAfterInstall = false
+    private var pendingClearAfterSave = false
 
     private val htmlPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -194,6 +197,18 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 status.text = "保存失败：" + (e.localizedMessage ?: "未知错误")
             }
         }
+        if (pendingClearAfterSave) {
+            pendingClearAfterSave = false
+            clearAfterGeneratedApkClosed()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (pendingClearAfterInstall) {
+            pendingClearAfterInstall = false
+            clearAfterGeneratedApkClosed()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -240,7 +255,26 @@ class MainActivity : androidx.activity.ComponentActivity() {
         File(filesDir, "custom_images").deleteRecursively()
         File(filesDir, "imported_page.html").delete()
         File(filesDir, "site_project").deleteRecursively()
+        File(cacheDir, "apk_generation").deleteRecursively()
+        File(cacheDir, "webworkshop-preview-icon.img").delete()
+        cacheDir.listFiles()?.filter { it.isFile && it.name.startsWith("webworkshop-image-") }?.forEach { it.delete() }
     }
+
+    private fun clearAfterGeneratedApkClosed() {
+        resetTransientOptions()
+        activePreviewWebView?.let { view -> runCatching {
+            view.stopLoading(); view.clearHistory(); view.clearFormData(); view.clearCache(true)
+            view.loadUrl("about:blank"); view.removeAllViews(); view.destroy()
+        } }
+        activePreviewWebView = null
+        showingPreview = false
+        savedHomeScrollY = 0
+        homeScrollView = null
+        showHome()
+        Toast.makeText(this, "已清空本次网页、上传图片和缓存；制作历史及签名信息已保留", Toast.LENGTH_LONG).show()
+    }
+
+    private fun captureHomeScrollPosition() { homeScrollView?.let { savedHomeScrollY = it.scrollY.coerceAtLeast(0) } }
 
     private fun imagePreview(uri: Uri?, caption: String, previewHeight: Int, kind: String): LinearLayout {
         val panel = LinearLayout(this).apply {
@@ -300,6 +334,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                         "icon" -> { iconUri = null; prefs.edit().remove("icon_uri").apply() }
                         else -> { splashUri = null; prefs.edit().remove("splash_uri").apply() }
                     }
+                    captureHomeScrollPosition()
                     showHome()
                     Toast.makeText(this@MainActivity, "图片已删除", Toast.LENGTH_SHORT).show()
                 }
@@ -313,6 +348,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         frame.isFocusable = true
         frame.contentDescription = if (kind == "icon") "点击添加或更换应用图标" else "点击添加或更换启动画面"
         frame.setOnClickListener {
+            captureHomeScrollPosition()
             pendingImage = kind
             imagePicker.launch(arrayOf("image/png", "image/jpeg", "image/webp"))
         }
@@ -322,6 +358,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         panel.addView(frame, previewParams)
         if (kind == "icon" && (iconFitMode == "manual" || iconFitMode == "fit") && uri != null) {
             panel.addView(button("调整图标位置 / 缩放 / 裁切") {
+                captureHomeScrollPosition()
                 val original = File(filesDir, "custom_images").listFiles()
                     ?.firstOrNull { it.name.startsWith("app_icon_original.") }
                 if (original != null) showIconCropEditor(Uri.fromFile(original))
@@ -592,6 +629,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
 
         val scroll = ScrollView(this)
         homeScrollView = scroll
+        scroll.setOnScrollChangeListener { _, _, scrollY, _, _ -> savedHomeScrollY = scrollY.coerceAtLeast(0) }
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(18))
@@ -603,6 +641,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         val htmlMode = RadioButton(this).apply { text = "本地 HTML"; id = View.generateViewId(); isChecked = mode == "html" }
         tabs.addView(urlMode); tabs.addView(htmlMode)
         tabs.setOnCheckedChangeListener { _, checked ->
+            captureHomeScrollPosition()
             mode = if (checked == htmlMode.id) "html" else "url"
             prefs.edit().putString("mode", mode).apply()
         }
@@ -688,6 +727,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         iconModeGroup.setOnCheckedChangeListener { _, checkedId ->
             val selected = if (checkedId == originalMode.id) "original" else "manual"
             if (selected != iconFitMode) {
+                captureHomeScrollPosition()
                 iconFitMode = selected
                 prefs.edit().putString("icon_fit_mode", selected).apply()
                 // Always switch back to the untouched upload when changing modes.
@@ -951,13 +991,27 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     generatedApk = apk
                     saveBuildHistory(request, apk)
                     status.text = "生成成功：" + apk.name + "（" + apk.length() / 1024 + " KB）"
-                    AlertDialog.Builder(this)
+                    val buildDialog = AlertDialog.Builder(this)
                         .setTitle("APK 已生成")
-                        .setMessage("文件已在本机生成。可以立即安装，也可以保存到手机。")
-                        .setPositiveButton("立即安装") { _, _ -> installGeneratedApk(apk) }
-                        .setNeutralButton("保存到手机") { _, _ -> apkSavePicker.launch(apk.name) }
-                        .setNegativeButton("稍后") { _, _ -> }
-                        .show()
+                        .setMessage("文件已在本机生成。可以立即安装，也可以保存到手机。关闭此界面后，本次网页内容、上传图片和临时缓存将自动清空；制作历史及签名信息保留。")
+                        .setPositiveButton("立即安装", null).setNeutralButton("保存到手机", null)
+                        .setNegativeButton("稍后", null).create()
+                    var handedOffToSystem = false
+                    buildDialog.setOnShowListener {
+                        buildDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                            handedOffToSystem = true; pendingClearAfterInstall = true
+                            buildDialog.dismiss(); installGeneratedApk(apk)
+                        }
+                        buildDialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                            handedOffToSystem = true; pendingClearAfterSave = true
+                            buildDialog.dismiss(); apkSavePicker.launch(apk.name)
+                        }
+                        buildDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+                            handedOffToSystem = true; buildDialog.dismiss(); clearAfterGeneratedApkClosed()
+                        }
+                    }
+                    buildDialog.setOnDismissListener { if (!handedOffToSystem) clearAfterGeneratedApkClosed() }
+                    buildDialog.show()
                 }
             } catch (e: Exception) {
                 android.util.Log.e("WebWorkshop", "APK generation failed", e)
@@ -1033,6 +1087,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             webViewClient = WebViewClient()
             webChromeClient = WebChromeClient()
         }
+        activePreviewWebView = webView
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(242, 247, 252))
@@ -1066,19 +1121,17 @@ class MainActivity : androidx.activity.ComponentActivity() {
         page.addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
         var pullStartY = 0f
         var pullStartX = 0f
+        var singleFingerPull = false
         webView.setOnTouchListener { _, event ->
             when (event.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    pullStartY = event.rawY
-                    pullStartX = event.rawX
-                }
+                android.view.MotionEvent.ACTION_DOWN -> { singleFingerPull = true; pullStartY = event.rawY; pullStartX = event.rawX }
+                android.view.MotionEvent.ACTION_POINTER_DOWN -> singleFingerPull = false
                 android.view.MotionEvent.ACTION_UP -> {
-                    val dy = event.rawY - pullStartY
-                    val dx = event.rawX - pullStartX
-                    if (dy > dp(88) && kotlin.math.abs(dx) < dp(70) && webView.scrollY <= 0) {
-                        refreshPreviewPage()
-                    }
+                    val dy = event.rawY - pullStartY; val dx = event.rawX - pullStartX
+                    if (singleFingerPull && dy > dp(88) && kotlin.math.abs(dx) < dp(70) && webView.scrollY <= 0) refreshPreviewPage()
+                    singleFingerPull = false
                 }
+                android.view.MotionEvent.ACTION_CANCEL -> singleFingerPull = false
             }
             false
         }
@@ -1107,24 +1160,18 @@ class MainActivity : androidx.activity.ComponentActivity() {
     private fun refreshPreviewPage() {
         if (!::webView.isInitialized) return
         val currentUrl = webView.url?.takeIf { it != "about:blank" } ?: previewPageUrl
-        webView.stopLoading()
-        webView.clearHistory()
-        webView.clearFormData()
-        webView.clearCache(true)
-        if (mode == "html") {
-            val html = localHtml
-            if (!html.isNullOrBlank()) {
-                webView.loadDataWithBaseURL(localHtmlBaseUrl ?: "file:///android_asset/", html, "text/html", "UTF-8", null)
-            } else {
-                webView.loadUrl("about:blank")
-            }
-        } else if (!currentUrl.isNullOrBlank()) {
-            previewPageUrl = currentUrl
-            webView.loadUrl(currentUrl)
-        } else {
-            webView.loadUrl("about:blank")
+        webView.stopLoading(); webView.clearHistory(); webView.clearFormData(); webView.clearCache(true)
+        android.webkit.WebStorage.getInstance().deleteAllData()
+        val reloadPage = {
+            if (mode == "html") {
+                val html = localHtml
+                if (!html.isNullOrBlank()) webView.loadDataWithBaseURL(localHtmlBaseUrl ?: "file:///android_asset/", html, "text/html", "UTF-8", null)
+                else webView.loadUrl("about:blank")
+            } else if (!currentUrl.isNullOrBlank()) { previewPageUrl = currentUrl; webView.loadUrl(currentUrl) }
+            else webView.loadUrl("about:blank")
         }
-        Toast.makeText(this, "网页已刷新，缓存和表单历史已清理", Toast.LENGTH_SHORT).show()
+        android.webkit.CookieManager.getInstance().removeAllCookies { reloadPage() }
+        Toast.makeText(this, "网页已刷新，缓存、Cookie 和网页存储已清理", Toast.LENGTH_SHORT).show()
     }
 
     @Deprecated("Deprecated in Android")
