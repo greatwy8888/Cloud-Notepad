@@ -59,8 +59,13 @@ async function ensureLicenseSchema(db) {
 
 function adminAuthorized(req, env) {
   const configured = String(env.WEBWORKSHOP_ADMIN_KEY || "");
-  const supplied = String(req.headers.get("x-webworkshop-admin-key") || "");
-  return configured.length >= 32 && supplied.length === configured.length && supplied === configured;
+  // Admin keys may contain Unicode. Headers only accept ISO-8859-1 byte strings,
+  // so the browser sends the UTF-8 bytes as lowercase hexadecimal ASCII.
+  const encoded = String(req.headers.get("x-webworkshop-admin-key-utf8") || "");
+  if (configured.length < 32 || !/^(?:[0-9a-f]{2})+$/.test(encoded)) return false;
+  const bytes = new Uint8Array(encoded.match(/../g).map(part => parseInt(part, 16)));
+  const supplied = new TextDecoder().decode(bytes);
+  return supplied.length === configured.length && supplied === configured;
 }
 
 async function handleAdmin(req, env, url) {
@@ -138,7 +143,7 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin-top:12px}td,th{b
 <div class="panel"><b>生成一次性序列号</b><div class="grid">
 <div><label>适用网页工坊版本标识</label><input id="build" value="1.4.6" placeholder="例如 1.4.6"></div>
 <div><label>数量</label><input id="count" type="number" min="1" max="500" value="10"></div>
-</div><button id="createButton" type="button" onclick="(async function(){var m=document.getElementById('message'),out=document.getElementById('codes'),btn=this;function say(t,err){if(m){m.textContent=t;m.style.color=err?'#b91c1c':'#166534';m.style.fontWeight=err?'700':'400';}}try{var key=document.getElementById('key').value.trim(),build=document.getElementById('build').value.trim(),count=Number(document.getElementById('count').value);if(!key){say('生成失败：请先输入管理员密钥。',true);return;}if(!/^[A-Za-z0-9._-]{1,40}$/.test(build)){say('生成失败：版本标识格式无效。',true);return;}if(!Number.isInteger(count)||count<1||count>500){say('生成失败：数量必须为 1 至 500。',true);return;}btn.disabled=true;out.textContent='正在连接服务器…';say('按钮事件已确认，正在向授权服务器发送请求…',false);var ctl=new AbortController(),tm=setTimeout(function(){ctl.abort();},20000),res=await fetch('/api/webworkshop/admin/create',{method:'POST',cache:'no-store',signal:ctl.signal,headers:{'content-type':'application/json','x-webworkshop-admin-key':key},body:JSON.stringify({build_id:build,count:count})});clearTimeout(tm);var raw=await res.text(),data;try{data=raw?JSON.parse(raw):{};}catch(_){data={raw:raw};}if(!res.ok){throw new Error('HTTP '+res.status+' '+res.statusText+'：'+String(data.error||data.detail||data.message||data.raw||raw||'无服务器详情').slice(0,900));}var list=Array.isArray(data.serials)?data.serials:[];if(!list.length)throw new Error('接口返回成功但没有序列号：'+JSON.stringify(data).slice(0,700));out.textContent=list.join('\\n');say('生成成功：'+list.length+' 个序列号，请立即复制保存。',false);}catch(e){out.textContent='生成失败，请查看上方错误。';say('生成失败：'+(e&&e.name==='AbortError'?'服务器请求超时（20 秒）。':(e&&e.message?e.message:String(e))),true);}finally{btn.disabled=false;}}).call(this)">生成序列号</button> <button id="refreshButton" class="secondary" type="button" onclick="var m=document.getElementById('message');if(m)m.textContent='刷新按钮点击事件已触发，正在读取记录…';if(typeof window.loadList==='function'){window.loadList()}else if(m){m.textContent='按钮事件已触发，但刷新函数未加载。请反馈页面版本号。'}">刷新记录</button>
+</div><button id="createButton" type="button" onclick="(async function(){var m=document.getElementById('message'),out=document.getElementById('codes'),btn=this;function say(t,err){if(m){m.textContent=t;m.style.color=err?'#b91c1c':'#166534';m.style.fontWeight=err?'700':'400';}}try{var key=document.getElementById('key').value.trim(),build=document.getElementById('build').value.trim(),count=Number(document.getElementById('count').value);if(!key){say('生成失败：请先输入管理员密钥。',true);return;}if(!/^[A-Za-z0-9._-]{1,40}$/.test(build)){say('生成失败：版本标识格式无效。',true);return;}if(!Number.isInteger(count)||count<1||count>500){say('生成失败：数量必须为 1 至 500。',true);return;}btn.disabled=true;out.textContent='正在连接服务器…';say('按钮事件已确认，正在向授权服务器发送请求…',false);var ctl=new AbortController(),tm=setTimeout(function(){ctl.abort();},20000),res=await fetch('/api/webworkshop/admin/create',{method:'POST',cache:'no-store',signal:ctl.signal,headers:{'content-type':'application/json','x-webworkshop-admin-key-utf8':Array.from(new TextEncoder().encode(key),function(b){return b.toString(16).padStart(2,'0');}).join('')},body:JSON.stringify({build_id:build,count:count})});clearTimeout(tm);var raw=await res.text(),data;try{data=raw?JSON.parse(raw):{};}catch(_){data={raw:raw};}if(!res.ok){throw new Error('HTTP '+res.status+' '+res.statusText+'：'+String(data.error||data.detail||data.message||data.raw||raw||'无服务器详情').slice(0,900));}var list=Array.isArray(data.serials)?data.serials:[];if(!list.length)throw new Error('接口返回成功但没有序列号：'+JSON.stringify(data).slice(0,700));out.textContent=list.join('\\n');say('生成成功：'+list.length+' 个序列号，请立即复制保存。',false);}catch(e){out.textContent='生成失败，请查看上方错误。';say('生成失败：'+(e&&e.name==='AbortError'?'服务器请求超时（20 秒）。':(e&&e.message?e.message:String(e))),true);}finally{btn.disabled=false;}}).call(this)">生成序列号</button> <button id="refreshButton" class="secondary" type="button" onclick="var m=document.getElementById('message');if(m)m.textContent='刷新按钮点击事件已触发，正在读取记录…';if(typeof window.loadList==='function'){window.loadList()}else if(m){m.textContent='按钮事件已触发，但刷新函数未加载。请反馈页面版本号。'}">刷新记录</button>
 <div class="muted">每个序列号仅可成功激活一次；不同序列号可在同一设备上先后使用。生成后无法再次查看完整明文。</div></div>
 <div class="panel"><b>本次生成的序列号（仅显示一次）</b><pre id="codes">尚未生成</pre><button id="copyButton" class="secondary" type="button">复制序列号</button><button id="downloadButton" class="secondary" type="button">导出 TXT</button></div>
 <div class="panel"><b>使用记录</b><div id="message" class="muted">管理页面版本：2026-11-14-2；正在初始化脚本…</div><div style="overflow:auto"><table><thead><tr><th>序列号提示</th><th>版本</th><th>状态</th><th>激活时间 / 设备</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table></div></div>
@@ -174,7 +179,7 @@ async function api(path, options) {
   options = options || {};
   var headers = Object.assign({}, options.headers || {}, {
     "content-type": "application/json",
-    "x-webworkshop-admin-key": adminKey()
+    "x-webworkshop-admin-key-utf8": Array.from(new TextEncoder().encode(adminKey()), function (b) { return b.toString(16).padStart(2, "0"); }).join("")
   });
   var response;
   try {
