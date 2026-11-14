@@ -232,51 +232,86 @@ object ApkGenerator {
         val adaptiveDir = File(decoded, "res/mipmap-anydpi-v26").apply { mkdirs() }
         val fallbackDir = File(decoded, "res/mipmap-mdpi").apply { mkdirs() }
 
-        val source = readBitmap(context, iconUri)
-        val icon = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
-        try {
-            val canvas = android.graphics.Canvas(icon)
-            // Apply rounded corners to the uploaded image while preserving its aspect ratio.
-            val path = android.graphics.Path().apply {
-                addRoundRect(android.graphics.RectF(0f, 0f, 512f, 512f), 92f, 92f, android.graphics.Path.Direction.CW)
-            }
-            canvas.save()
-            canvas.clipPath(path)
-            // "fill" covers the full square and crops overflow; "fit" keeps the entire image visible.
-            val scale = if (iconFitMode == "fill") {
-                maxOf(512f / source.width, 512f / source.height)
+        if (iconFitMode == "fit") {
+            // In complete mode the user has already positioned and cropped the source
+            // manually in the square editor. Preserve those PNG pixels exactly: no
+            // automatic crop, rounding, tint, shadow, background, or filtering.
+            val sourceFile = if (iconUri.scheme == "file") {
+                File(iconUri.path ?: "").takeIf { it.isFile }
+                    ?: throw IllegalStateException("手动裁切后的图标文件不存在")
             } else {
-                minOf(512f / source.width, 512f / source.height)
+                val copied = File(context.cacheDir, "webworkshop-manual-icon.png")
+                context.contentResolver.openInputStream(iconUri)?.use { input ->
+                    copied.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("无法读取手动裁切图标")
+                copied
             }
-            val width = source.width * scale
-            val height = source.height * scale
-            val left = (512f - width) / 2f
-            val top = (512f - height) / 2f
-            canvas.drawBitmap(
-                source, null, android.graphics.RectF(left, top, left + width, top + height),
-                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
-            )
-            canvas.restore()
+            try {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                sourceFile.inputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
+                require(bounds.outWidth == bounds.outHeight && bounds.outWidth in setOf(512, 1024)) {
+                    "完整模式图标必须是 512×512 或 1024×1024，请重新裁切"
+                }
+                File(drawableDir, "ic_launcher_foreground.png").outputStream().use { out ->
+                    sourceFile.inputStream().use { it.copyTo(out) }
+                }
+                File(fallbackDir, "ic_launcher.png").outputStream().use { out ->
+                    sourceFile.inputStream().use { it.copyTo(out) }
+                }
+            } finally {
+                if (sourceFile.parentFile == context.cacheDir) sourceFile.delete()
+            }
 
-            FileOutputStream(File(drawableDir, "ic_launcher_foreground.png")).use {
-                check(icon.compress(Bitmap.CompressFormat.PNG, 100, it)) { "APP 图标生成失败" }
+            // Adaptive icon background remains fully transparent. The launcher applies
+            // its own platform mask; the app does not alter the uploaded crop.
+            val background = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+            try {
+                FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
+                    check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "透明图标背景生成失败" }
+                }
+            } finally {
+                background.recycle()
             }
-            FileOutputStream(File(fallbackDir, "ic_launcher.png")).use {
-                check(icon.compress(Bitmap.CompressFormat.PNG, 100, it)) { "传统 APP 图标生成失败" }
+        } else {
+            // Keep the established fill-mode behavior unchanged: cover the square,
+            // crop overflow, and apply the existing rounded-corner treatment.
+            val source = readBitmap(context, iconUri)
+            val icon = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+            try {
+                val canvas = android.graphics.Canvas(icon)
+                val path = android.graphics.Path().apply {
+                    addRoundRect(android.graphics.RectF(0f, 0f, 512f, 512f), 92f, 92f, android.graphics.Path.Direction.CW)
+                }
+                canvas.save()
+                canvas.clipPath(path)
+                val scale = maxOf(512f / source.width, 512f / source.height)
+                val width = source.width * scale
+                val height = source.height * scale
+                val left = (512f - width) / 2f
+                val top = (512f - height) / 2f
+                canvas.drawBitmap(
+                    source, null, android.graphics.RectF(left, top, left + width, top + height),
+                    android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+                )
+                canvas.restore()
+                FileOutputStream(File(drawableDir, "ic_launcher_foreground.png")).use {
+                    check(icon.compress(Bitmap.CompressFormat.PNG, 100, it)) { "APP 图标生成失败" }
+                }
+                FileOutputStream(File(fallbackDir, "ic_launcher.png")).use {
+                    check(icon.compress(Bitmap.CompressFormat.PNG, 100, it)) { "传统 APP 图标生成失败" }
+                }
+            } finally {
+                source.recycle()
+                icon.recycle()
             }
-        } finally {
-            source.recycle()
-            icon.recycle()
-        }
-
-        // Transparent adaptive background: the uploaded image is the only icon artwork.
-        val background = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
-        try {
-            FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
-                check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "透明图标背景生成失败" }
+            val background = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+            try {
+                FileOutputStream(File(drawableDir, "ic_launcher_background.png")).use {
+                    check(background.compress(Bitmap.CompressFormat.PNG, 100, it)) { "透明图标背景生成失败" }
+                }
+            } finally {
+                background.recycle()
             }
-        } finally {
-            background.recycle()
         }
 
         File(adaptiveDir, "ic_launcher.xml").writeText(
