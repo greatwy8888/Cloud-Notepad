@@ -482,7 +482,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
         fun addColorField(title: String, key: String, defaultValue: String): EditText {
             form.addView(label(title))
             val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
-            lateinit var swatch: TextView
+            var swatch: TextView? = null
             val field = EditText(this).apply {
                 hint = "#RRGGBB 或 #AARRGGBB"
                 isSingleLine = true
@@ -495,7 +495,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                         val value = s?.toString()?.trim().orEmpty()
                         prefs.edit().putString(key, value).apply()
-                        refreshPaletteSwatch(swatch, value, defaultValue)
+                        swatch?.let { refreshPaletteSwatch(it, value, defaultValue) }
                         refreshIconPreview()
                     }
                     override fun afterTextChanged(s: android.text.Editable?) {}
@@ -509,9 +509,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
                 setPadding(dp(8), 0, dp(8), 0)
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { showColorPalette(field, swatch, key, defaultValue) }
+                setOnClickListener { swatch?.let { showColorPalette(field, it, key, defaultValue) } }
             }
-            refreshPaletteSwatch(swatch, field.text.toString(), defaultValue)
+            refreshPaletteSwatch(swatch!!, field.text.toString(), defaultValue)
             line.addView(field, LinearLayout.LayoutParams(0, dp(46), 1f))
             line.addView(swatch, LinearLayout.LayoutParams(dp(76), dp(40)).apply { leftMargin = dp(8) })
             form.addView(line)
